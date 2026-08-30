@@ -211,7 +211,7 @@ export function DomainDashboardPage() {
         </button>
       </div>
       {err && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded px-3 py-2 mb-3">{err}</div>}
-      {data && (
+      {data && data.kpis && data.charts && (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             {data.kpis.map((k, i) => <KpiCard key={i} k={k} />)}

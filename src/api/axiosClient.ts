@@ -1,31 +1,28 @@
 /**
  * axiosClient.ts - Shared Axios instance for Scale AI ERP frontend.
  *
- * STATIC DEMO MODE - No backend required!
- * All API calls return empty arrays/objects so pages show "no data" states
- * instead of error messages.
+ * STATIC DEMO MODE - No backend required.
+ * All API errors are handled gracefully:
+ * - GET list endpoints return [] so pages show empty states instead of errors
+ * - Dashboard/KPI endpoints reject so pages use their rich DEMO_* fallbacks
+ * - Mutation endpoints (POST/PUT/PATCH/DELETE) reject silently
  */
 
 import axios, { type InternalAxiosRequestConfig, type AxiosResponse, type AxiosError } from 'axios'
-
-// ---------------------------------------------------------------------------
-// Instance
-// ---------------------------------------------------------------------------
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 3_000, // Short timeout - fail fast in static demo
+  timeout: 3_000, // Short timeout — fail fast in static demo
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
 // ---------------------------------------------------------------------------
-// Request interceptor - attach JWT Bearer token
+// Request interceptor — attach JWT Bearer token
 // ---------------------------------------------------------------------------
-
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {
     try {
@@ -38,7 +35,7 @@ apiClient.interceptors.request.use(
         }
       }
     } catch {
-      // localStorage unavailable or JSON malformed - proceed without token
+      // ignore
     }
     return config
   },
@@ -46,46 +43,13 @@ apiClient.interceptors.request.use(
 )
 
 // ---------------------------------------------------------------------------
-// Response interceptor - STATIC DEMO MODE
+// Response interceptor — STATIC DEMO MODE
 // ---------------------------------------------------------------------------
-// Convert all errors to empty successful responses.
-// This allows pages to render with empty states instead of showing errors.
-
+// ALL failures reject so .catch() in pages can load demo data.
+// Never clear auth or redirect to login.
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
-  (error: AxiosError) => {
-    const url = error.config?.url ?? ''
-    const method = error.config?.method?.toLowerCase() ?? 'get'
-    
-    // For GET requests to list endpoints, return empty array
-    // This prevents "Invalid or expired token" errors showing in UI
-    if (method === 'get') {
-      // Skip dashboard endpoints - let them fall through to .catch() 
-      // so pages can use their rich demo data fallbacks
-      if (url.includes('/dashboard') || url.includes('/kpis')) {
-        return Promise.reject(error)
-      }
-      
-      // List endpoints that return arrays
-      if (url.includes('/customers') || url.includes('/suppliers') || 
-          url.includes('/items') || url.includes('/rfqs') || 
-          url.includes('/quotations') || url.includes('/orders') ||
-          url.includes('/employees') || url.includes('/inventory') ||
-          url.includes('/ncrs') || url.includes('/capas') ||
-          url.includes('/prs') || url.includes('/pos') ||
-          url.includes('/invoices') || url.includes('/challans') ||
-          url.includes('/companies') || url.includes('/plants') ||
-          url.includes('/documents') || url.includes('/holidays') ||
-          url.includes('/work-orders') || url.includes('/engineering') ||
-          url.includes('/calibration') || url.includes('/fairs') ||
-          url.includes('/summary')) {
-        return Promise.resolve({ data: [], status: 200, statusText: 'OK', headers: {}, config: error.config } as AxiosResponse)
-      }
-    }
-    
-    // All other requests - just reject so pages can handle with their own fallback
-    return Promise.reject(error)
-  }
+  (error: AxiosError) => Promise.reject(error)
 )
 
 export default apiClient
