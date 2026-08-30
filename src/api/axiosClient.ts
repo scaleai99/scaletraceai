@@ -1,17 +1,9 @@
 /**
  * axiosClient.ts - Shared Axios instance for Scale AI ERP frontend.
  *
- * Features
- * --------
- * - Base URL: '' (relative) - Vite dev proxy routes /api/* to ERP FastAPI on :8001
- * - Request interceptor: injects `Authorization: Bearer <token>` from authStore
- * - Response interceptor: auto-logout on 401 (expired/invalid token)
- * - Default headers: JSON content type
- *
- * Usage
- * -----
- *   import { apiClient } from './axiosClient'
- *   const { data } = await apiClient.get('/api/v1/customers')
+ * STATIC DEMO MODE - No backend required!
+ * All API calls return empty arrays/objects so pages show "no data" states
+ * instead of error messages.
  */
 
 import axios, { type InternalAxiosRequestConfig, type AxiosResponse, type AxiosError } from 'axios'
@@ -20,14 +12,11 @@ import axios, { type InternalAxiosRequestConfig, type AxiosResponse, type AxiosE
 // Instance
 // ---------------------------------------------------------------------------
 
-// In production (Cloudflare Pages), VITE_API_BASE_URL points to the deployed
-// backend (e.g. https://api.yourdomain.com). In local dev it is empty so the
-// Vite proxy handles /api/* → localhost:8000.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30_000,
+  timeout: 3_000, // Short timeout - fail fast in static demo
   headers: {
     'Content-Type': 'application/json',
   },
@@ -39,7 +28,6 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {
-    // Read token from localStorage at request time to pick up refreshed tokens
     try {
       const raw = localStorage.getItem('scale-erp-auth')
       if (raw) {
@@ -58,16 +46,42 @@ apiClient.interceptors.request.use(
 )
 
 // ---------------------------------------------------------------------------
-// Response interceptor - handle 401 (token expired / invalid)
+// Response interceptor - STATIC DEMO MODE
 // ---------------------------------------------------------------------------
-// DISABLED for static demo deployment (no backend).
-// All API calls will fail, but we don't want to redirect to login — 
-// pages will fall back to demo data instead.
+// Convert all errors to empty successful responses.
+// This allows pages to render with empty states instead of showing errors.
 
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError) => {
-    // In static demo mode, just reject without clearing auth or redirecting
+    // Check if the request URL contains list-like endpoints
+    const url = error.config?.url ?? ''
+    const method = error.config?.method?.toLowerCase() ?? 'get'
+    
+    // For GET requests, return empty array or object based on URL pattern
+    if (method === 'get') {
+      // Endpoints that return arrays (lists)
+      if (url.includes('/customers') || url.includes('/suppliers') || 
+          url.includes('/items') || url.includes('/rfqs') || 
+          url.includes('/quotations') || url.includes('/orders') ||
+          url.includes('/employees') || url.includes('/inventory') ||
+          url.includes('/ncrs') || url.includes('/capas') ||
+          url.includes('/prs') || url.includes('/pos') ||
+          url.includes('/invoices') || url.includes('/challans') ||
+          url.includes('/companies') || url.includes('/plants') ||
+          url.includes('/documents') || url.includes('/holidays') ||
+          url.includes('/work-orders') || url.includes('/engineering') ||
+          url.includes('/calibration') || url.includes('/fairs')) {
+        // Return empty array wrapped in axios-like response
+        return Promise.resolve({ data: [], status: 200, statusText: 'OK', headers: {}, config: error.config } as AxiosResponse)
+      }
+      // Dashboard/KPI endpoints return empty object
+      if (url.includes('/dashboard') || url.includes('/kpis') || url.includes('/summary')) {
+        return Promise.resolve({ data: {}, status: 200, statusText: 'OK', headers: {}, config: error.config } as AxiosResponse)
+      }
+    }
+    
+    // For POST/PUT/PATCH/DELETE, just reject - these are user actions that should fail silently
     return Promise.reject(error)
   }
 )
