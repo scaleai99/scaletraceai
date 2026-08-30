@@ -22,7 +22,7 @@ import {
   RefreshCw,
   FileDown,
 } from 'lucide-react'
-import { getDashboardKPIs, type KPIData } from '../../api/dashboardApi'
+import { type KPIData } from '../../api/dashboardApi'
 import { DEMO_KPI } from '../../lib/demoData'
 import { DemoBanner } from '../../components/ui/DemoBanner'
 import { formatINR } from '../../lib/utils'
@@ -187,20 +187,13 @@ export function ManagementDashboardPage() {
   const toast = useToast()
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fetchKPIs = (r: DateRange = range) => {
+  const fetchKPIs = (_r: DateRange = range) => {
     setLoading(true)
     setError(null)
-    const { range: rangeParam, from, to } = toApiRange(r)
-    getDashboardKPIs(rangeParam, from, to)
-      .then((data) => {
-        setKpis(data)
-        setIsDemo(false)
-      })
-      .catch(() => {
-        setKpis(DEMO_KPI)
-        setIsDemo(true)
-      })
-      .finally(() => setLoading(false))
+    // Static demo — no backend available, use demo data immediately
+    setKpis(DEMO_KPI)
+    setIsDemo(true)
+    setLoading(false)
   }
 
   // Initial fetch + auto-refresh every 60s
