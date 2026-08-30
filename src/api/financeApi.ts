@@ -42,7 +42,7 @@ export interface ARSummary {
 // ---------------------------------------------------------------------------
 
 export const listInvoices = (params?: Record<string, unknown>) =>
-  apiClient.get<Invoice[]>('/api/v1/finance/invoices', { params }).then((r) => r.data)
+  apiClient.get<Invoice[]>('/api/v1/finance/invoices', { params }).then((r) => Array.isArray(r.data) ? r.data : [])
 
 export const getInvoice = (id: string) =>
   apiClient.get<Invoice>(`/api/v1/finance/invoices/${id}`).then((r) => r.data)

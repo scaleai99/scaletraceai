@@ -27,7 +27,7 @@ export interface MaintenanceDashboard {
 }
 
 export const listMaintenanceRecords = (params?: Record<string, unknown>) =>
-  apiClient.get<MaintenanceRecord[]>('/api/v1/maintenance/records', { params }).then(r => r.data)
+  apiClient.get<MaintenanceRecord[]>('/api/v1/maintenance/records', { params }).then(r => Array.isArray(r.data) ? r.data : [])
 
 export const createMaintenanceRecord = (data: Partial<MaintenanceRecord>) =>
   apiClient.post<MaintenanceRecord>('/api/v1/maintenance/records', data).then(r => r.data)

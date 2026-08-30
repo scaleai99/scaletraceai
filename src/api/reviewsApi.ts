@@ -25,14 +25,14 @@ export const listConfigReviews = (reviewType?: string) =>
     .get<ReviewRow[]>('/api/v1/config-reviews/', {
       params: reviewType ? { review_type: reviewType } : {},
     })
-    .then((r) => r.data)
+    .then((r) => Array.isArray(r.data) ? r.data : [])
 
 export const listContractReviews = (reviewType?: string) =>
   apiClient
     .get<ReviewRow[]>('/api/v1/contract-reviews/', {
       params: reviewType ? { review_type: reviewType } : {},
     })
-    .then((r) => r.data)
+    .then((r) => Array.isArray(r.data) ? r.data : [])
 
 export function reviewStatus(r: ReviewRow): ReviewStatus {
   if (r.approved_at) return 'Approved'

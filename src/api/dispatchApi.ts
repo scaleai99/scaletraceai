@@ -43,7 +43,7 @@ export interface DeliveryChallan {
 // ---------------------------------------------------------------------------
 
 export const listChallans = (params?: Record<string, unknown>) =>
-  apiClient.get<DeliveryChallan[]>('/api/v1/dispatch/challans', { params }).then((r) => r.data)
+  apiClient.get<DeliveryChallan[]>('/api/v1/dispatch/challans', { params }).then((r) => Array.isArray(r.data) ? r.data : [])
 
 export const getChallan = (id: string) =>
   apiClient.get<DeliveryChallan>(`/api/v1/dispatch/challans/${id}`).then((r) => r.data)
