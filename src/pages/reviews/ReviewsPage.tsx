@@ -41,7 +41,8 @@ export function ReviewsPage() {
     setError(null)
     try {
       const fetcher = tab === 'config' ? listConfigReviews : listContractReviews
-      setRows(await fetcher(stage || undefined))
+      const result = await fetcher(stage || undefined)
+      setRows(Array.isArray(result) ? result : [])
     } catch {
       setRows([])
     } finally {

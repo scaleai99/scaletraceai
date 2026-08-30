@@ -1,7 +1,7 @@
 /**
  * Costing masters API client - Module 09 gap (Tooling / Material / Process rates).
  */
-import axios from 'axios'
+import { apiClient } from './axiosClient'
 
 const BASE = '/api/v1/costing-masters'
 
@@ -32,11 +32,11 @@ export interface ToolingCreate {
 }
 
 export async function listTooling(): Promise<Tooling[]> {
-  const { data } = await axios.get<Tooling[]>(`${BASE}/tooling`)
-  return data
+  const { data } = await apiClient.get<Tooling[]>(`${BASE}/tooling`)
+  return Array.isArray(data) ? data : []
 }
 
 export async function createTooling(body: ToolingCreate): Promise<Tooling> {
-  const { data } = await axios.post<Tooling>(`${BASE}/tooling`, body)
+  const { data } = await apiClient.post<Tooling>(`${BASE}/tooling`, body)
   return data
 }

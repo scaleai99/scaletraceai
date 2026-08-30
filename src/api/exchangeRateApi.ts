@@ -1,7 +1,7 @@
 /**
  * Exchange Rate API client - Module 34 gap (Req 34.6).
  */
-import axios from 'axios'
+import { apiClient } from './axiosClient'
 
 const BASE = '/api/v1/exchange-rates'
 
@@ -27,19 +27,19 @@ export interface RateLookup {
 }
 
 export async function listRates(currency_code?: string): Promise<ExchangeRate[]> {
-  const { data } = await axios.get<ExchangeRate[]>(BASE, {
+  const { data } = await apiClient.get<ExchangeRate[]>(BASE, {
     params: currency_code ? { currency_code } : {},
   })
-  return data
+  return Array.isArray(data) ? data : []
 }
 
 export async function createRate(body: ExchangeRateCreate): Promise<ExchangeRate> {
-  const { data } = await axios.post<ExchangeRate>(BASE, body)
+  const { data } = await apiClient.post<ExchangeRate>(BASE, body)
   return data
 }
 
 export async function latestRate(currency: string, on_date?: string): Promise<RateLookup> {
-  const { data } = await axios.get<RateLookup>(`${BASE}/${currency}`, {
+  const { data } = await apiClient.get<RateLookup>(`${BASE}/${currency}`, {
     params: on_date ? { on_date } : {},
   })
   return data

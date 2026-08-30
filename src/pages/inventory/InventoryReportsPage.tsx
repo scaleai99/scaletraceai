@@ -60,7 +60,7 @@ export function InventoryReportsPage() {
     setLoading(true)
     setError(null)
     listInventory({ limit: 500 })
-      .then((data) => setItems(data))
+      .then((data) => setItems(Array.isArray(data) ? data : []))
       .catch(() => setItems([]))
       .finally(() => setLoading(false))
   }

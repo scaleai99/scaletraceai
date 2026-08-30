@@ -406,7 +406,7 @@ export function EmployeeMasterPage() {
       if (deptFilter) params.department = deptFilter
       if (statusFilter) params.status = statusFilter
       const data = await listEmployeesApi(params)
-      setEmployees(data)
+      setEmployees(Array.isArray(data) ? data : [])
     } catch (e) {
       setError(errMsg(e, 'Failed to load employees. Is the backend running?'))
       setEmployees([])
