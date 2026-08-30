@@ -1,8 +1,11 @@
 ﻿import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import axios from 'axios'
 import { useAuthStore } from '../store/authStore'
 import { Button, Input } from '../components/ui'
+
+// Demo-mode credentials — no backend required
+const DEMO_USERNAME = 'admin'
+const DEMO_PASSWORD = 'admin123'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -19,32 +22,29 @@ export function LoginPage() {
     }
     setLoading(true)
     setError(null)
-    try {
-      const { data } = await axios.post('/api/auth/login', { username, password })
-      // Backend returns { access_token, token_type, expires_in, user: { user_id, username, full_name, email, roles, auth_type, plant_id } }
-      const user = data.user ?? data  // support both nested and flat response shapes
+
+    // Simulate a brief loading feel, then validate against demo credentials
+    await new Promise((resolve) => setTimeout(resolve, 400))
+
+    if (username === DEMO_USERNAME && password === DEMO_PASSWORD) {
       login(
-        data.access_token,
+        'demo-token',
         {
-          user_id: user.user_id ?? user.id ?? '',
-          username: user.username ?? username,
-          full_name: user.full_name ?? user.username ?? username,
-          email: user.email ?? null,
-          auth_type: user.auth_type ?? 'local',
+          user_id: 'demo-user-001',
+          username: DEMO_USERNAME,
+          full_name: 'Demo Admin',
+          email: 'admin@scaletrace.ai',
+          auth_type: 'local',
         },
-        user.roles ?? data.roles ?? [],
-        user.plant_id ?? null
+        ['admin'],
+        null
       )
       navigate('/dashboard')
-    } catch (err: unknown) {
-      const e = err as { response?: { data?: { detail?: string } }; message?: string }
-      const detail = e?.response?.data?.detail
-      setError(
-        typeof detail === 'string' ? detail : e?.message ?? 'Login failed. Check username and password.'
-      )
-    } finally {
-      setLoading(false)
+    } else {
+      setError('Invalid credentials. Use admin / admin123')
     }
+
+    setLoading(false)
   }
 
   return (

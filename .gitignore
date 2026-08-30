@@ -6,7 +6,6 @@ node_modules/
 
 # ── Secrets ──────────────────────────────────────────────────────────────
 .env
-!.env.example
 
 # ── Log / build artefact txt files from dev sessions ────────────────────
 *.txt
