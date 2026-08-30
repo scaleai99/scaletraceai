@@ -151,7 +151,7 @@ export function WorkOrderPage() {
   const inProgressCount = workOrders.filter((w) => w.status === 'In Progress').length
   const completedCount = workOrders.filter((w) => w.status === 'Completed').length
   const totalScrapped = workOrders.reduce((sum, wo) => {
-    return sum + wo.operations.reduce((s, op) => s + (op.qty_scrapped ?? 0), 0)
+    return sum + (wo.operations ?? []).reduce((s, op) => s + (op.qty_scrapped ?? 0), 0)
   }, 0)
 
   const columns = buildColumns()

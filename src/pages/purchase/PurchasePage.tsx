@@ -489,7 +489,7 @@ function PODetailPanel({
   onReceive: () => void
   onClose: () => void
 }) {
-  const lineTotal = po.line_items.reduce(
+  const lineTotal = (po.line_items ?? []).reduce(
     (sum, li) => sum + (li.quantity ?? 0) * (li.unit_price ?? 0),
     0
   )
@@ -532,7 +532,7 @@ function PODetailPanel({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {po.line_items.map((li) => (
+            {(po.line_items ?? []).map((li) => (
               <tr key={li.id} className="hover:bg-gray-50">
                 <td className="px-3 py-2 text-gray-500">{li.line_number}</td>
                 <td className="px-3 py-2 font-mono text-gray-800">{li.item_code ?? '-'}</td>

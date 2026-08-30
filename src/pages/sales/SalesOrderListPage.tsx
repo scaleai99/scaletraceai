@@ -104,7 +104,7 @@ function buildColumns(navigate: (path: string) => void): Column<SORow>[] {
       header: 'Lines',
       render: (row) => (
         <span className="text-sm text-gray-700">
-          {(row.line_items as unknown[]).length}
+          {((row.line_items ?? []) as unknown[]).length}
         </span>
       ),
     },
@@ -112,7 +112,7 @@ function buildColumns(navigate: (path: string) => void): Column<SORow>[] {
       key: 'total_value',
       header: 'Total Value',
       render: (row) => {
-        const total = (row.line_items as SalesOrder['line_items']).reduce((sum, li) => {
+        const total = ((row.line_items ?? []) as SalesOrder['line_items']).reduce((sum, li) => {
           const price = Number(li.agreed_unit_price ?? 0)
           const qty = Number(li.quantity ?? 0)
           return sum + price * qty
@@ -167,7 +167,7 @@ export function SalesOrderListPage() {
   ).length
   const overdueOrders = orders.filter((o) => {
     if (!['Open', 'In Production', 'Partially Dispatched'].includes(o.status as string)) return false
-    const lineItems = o.line_items as SalesOrder['line_items']
+    const lineItems = (o.line_items ?? []) as SalesOrder['line_items']
     return lineItems.some(
       (li) => li.delivery_date && new Date(li.delivery_date) < new Date()
     )
@@ -182,7 +182,7 @@ export function SalesOrderListPage() {
       return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear()
     })
     .reduce((sum, o) => {
-      const total = (o.line_items as SalesOrder['line_items']).reduce((s, li) => {
+      const total = ((o.line_items ?? []) as SalesOrder['line_items']).reduce((s, li) => {
         return s + Number(li.agreed_unit_price ?? 0) * Number(li.quantity ?? 0)
       }, 0)
       return sum + total

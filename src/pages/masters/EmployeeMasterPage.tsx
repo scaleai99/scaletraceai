@@ -99,7 +99,7 @@ interface DocumentRec { id: string; doc_name: string; doc_type: string | null; f
 
 const BASE = '/api/v1/hr'
 const listEmployeesApi = (params: Record<string, unknown>) =>
-  apiClient.get<Employee[]>(`${BASE}/employees`, { params }).then(r => r.data)
+  apiClient.get<Employee[]>(`${BASE}/employees`, { params }).then(r => Array.isArray(r.data) ? r.data : [])
 const getEmployeeApi = (id: string) =>
   apiClient.get<Employee & { competencies: Competency[]; training: Training[]; attendance: Attendance[]; education: Education[]; experience: Experience[]; documents: DocumentRec[] }>(`${BASE}/employees/${id}`).then(r => r.data)
 const createEmployeeApi = (body: Partial<Employee>) =>
