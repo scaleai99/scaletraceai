@@ -54,13 +54,19 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError) => {
-    // Check if the request URL contains list-like endpoints
     const url = error.config?.url ?? ''
     const method = error.config?.method?.toLowerCase() ?? 'get'
     
-    // For GET requests, return empty array or object based on URL pattern
+    // For GET requests to list endpoints, return empty array
+    // This prevents "Invalid or expired token" errors showing in UI
     if (method === 'get') {
-      // Endpoints that return arrays (lists)
+      // Skip dashboard endpoints - let them fall through to .catch() 
+      // so pages can use their rich demo data fallbacks
+      if (url.includes('/dashboard') || url.includes('/kpis')) {
+        return Promise.reject(error)
+      }
+      
+      // List endpoints that return arrays
       if (url.includes('/customers') || url.includes('/suppliers') || 
           url.includes('/items') || url.includes('/rfqs') || 
           url.includes('/quotations') || url.includes('/orders') ||
@@ -71,17 +77,13 @@ apiClient.interceptors.response.use(
           url.includes('/companies') || url.includes('/plants') ||
           url.includes('/documents') || url.includes('/holidays') ||
           url.includes('/work-orders') || url.includes('/engineering') ||
-          url.includes('/calibration') || url.includes('/fairs')) {
-        // Return empty array wrapped in axios-like response
+          url.includes('/calibration') || url.includes('/fairs') ||
+          url.includes('/summary')) {
         return Promise.resolve({ data: [], status: 200, statusText: 'OK', headers: {}, config: error.config } as AxiosResponse)
-      }
-      // Dashboard/KPI endpoints return empty object
-      if (url.includes('/dashboard') || url.includes('/kpis') || url.includes('/summary')) {
-        return Promise.resolve({ data: {}, status: 200, statusText: 'OK', headers: {}, config: error.config } as AxiosResponse)
       }
     }
     
-    // For POST/PUT/PATCH/DELETE, just reject - these are user actions that should fail silently
+    // All other requests - just reject so pages can handle with their own fallback
     return Promise.reject(error)
   }
 )
