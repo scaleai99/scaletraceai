@@ -60,22 +60,14 @@ apiClient.interceptors.request.use(
 // ---------------------------------------------------------------------------
 // Response interceptor - handle 401 (token expired / invalid)
 // ---------------------------------------------------------------------------
+// DISABLED for static demo deployment (no backend).
+// All API calls will fail, but we don't want to redirect to login — 
+// pages will fall back to demo data instead.
 
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError) => {
-    if (error.response?.status === 401) {
-      // Clear persisted auth state and redirect to login
-      try {
-        localStorage.removeItem('scale-erp-auth')
-      } catch {
-        // Ignore storage errors
-      }
-      // Only redirect if not already on the login page
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login'
-      }
-    }
+    // In static demo mode, just reject without clearing auth or redirecting
     return Promise.reject(error)
   }
 )
