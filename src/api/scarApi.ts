@@ -1,7 +1,7 @@
 /**
  * SCAR API client - Module 21 gap (Req 21.12/21.13).
  */
-import axios from 'axios'
+import { apiClient } from './axiosClient'
 
 const BASE = '/api/v1/scars'
 
@@ -37,12 +37,12 @@ export interface SCARCreate {
 }
 
 export async function listSCARs(params: { status?: string; overdue?: boolean } = {}): Promise<SCAR[]> {
-  const { data } = await axios.get<SCAR[]>(BASE, { params })
-  return data
+  const { data } = await apiClient.get<SCAR[]>(BASE, { params })
+  return Array.isArray(data) ? data : []
 }
 
 export async function createSCAR(body: SCARCreate): Promise<SCAR> {
-  const { data } = await axios.post<SCAR>(BASE, body)
+  const { data } = await apiClient.post<SCAR>(BASE, body)
   return data
 }
 
@@ -51,6 +51,6 @@ export async function transitionSCAR(
   target_state: string,
   extra: { supplier_response?: string; review_notes?: string } = {},
 ): Promise<SCAR> {
-  const { data } = await axios.post<SCAR>(`${BASE}/${id}/transition`, { target_state, ...extra })
+  const { data } = await apiClient.post<SCAR>(`${BASE}/${id}/transition`, { target_state, ...extra })
   return data
 }

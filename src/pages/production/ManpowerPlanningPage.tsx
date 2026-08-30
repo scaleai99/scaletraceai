@@ -59,13 +59,13 @@ export function ManpowerPlanningPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-400 animate-pulse">
           Loading"¦
         </div>
-      ) : data.work_centres.length === 0 ? (
+      ) : (data.work_centres ?? []).length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-400">
           No planned operations yet.
         </div>
       ) : (
         <div className="space-y-3">
-          {data.work_centres.map((wc) => (
+          {(data.work_centres ?? []).map((wc) => (
             <div key={wc.work_centre} className="bg-white rounded-xl border border-gray-200 p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="font-semibold text-gray-800">{wc.work_centre}</span>

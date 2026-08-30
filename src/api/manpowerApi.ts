@@ -1,7 +1,7 @@
 /**
  * Manpower Planning API client - Module 16 gap (Req 16.10).
  */
-import axios from 'axios'
+import { apiClient } from './axiosClient'
 
 const BASE = '/api/v1/production-orders'
 
@@ -27,11 +27,11 @@ export interface SkillGap {
 }
 
 export async function getManpowerLoading(): Promise<ManpowerLoading> {
-  const { data } = await axios.get<ManpowerLoading>(`${BASE}/manpower-loading`)
+  const { data } = await apiClient.get<ManpowerLoading>(`${BASE}/manpower-loading`)
   return data
 }
 
 export async function getSkillGaps(productionOrderId: string): Promise<{ gaps: SkillGap[] }> {
-  const { data } = await axios.get<{ gaps: SkillGap[] }>(`${BASE}/${productionOrderId}/skill-gaps`)
+  const { data } = await apiClient.get<{ gaps: SkillGap[] }>(`${BASE}/${productionOrderId}/skill-gaps`)
   return data
 }
