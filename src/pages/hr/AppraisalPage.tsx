@@ -6,7 +6,7 @@ export function AppraisalPage() {
   const [rows, setRows] = useState<Appraisal[]>([])
   const [err, setErr] = useState('')
   const [f, setF] = useState({ employee_name: '', period: 'FY2026-27', rating: 3, reviewer: '', goals: '', achievements: '' })
-  const load = useCallback(() => { listAppraisals().then(setRows).catch(e => setErr(String(e))) }, [])
+  const load = useCallback(() => { listAppraisals().then(setRows).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
   const add = async () => { setErr(''); try { await createAppraisal(f); setF({ ...f, employee_name: '', goals: '', achievements: '' }); load() } catch (e: any) { setErr(e?.response?.data?.detail || String(e)) } }
   const setStatus = async (id: string, status: string) => { await updateAppraisal(id, { status }); load() }

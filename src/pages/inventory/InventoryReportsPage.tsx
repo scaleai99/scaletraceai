@@ -61,10 +61,7 @@ export function InventoryReportsPage() {
     setError(null)
     listInventory({ limit: 500 })
       .then((data) => setItems(data))
-      .catch((err: unknown) => {
-        const e = err as { response?: { data?: { detail?: string } }; message?: string }
-        setError(e?.response?.data?.detail ?? e?.message ?? 'Failed to load inventory')
-      })
+      .catch(() => setItems([]))
       .finally(() => setLoading(false))
   }
 

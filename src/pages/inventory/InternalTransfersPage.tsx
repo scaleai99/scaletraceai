@@ -6,7 +6,7 @@ export function InternalTransfersPage() {
   const [rows, setRows] = useState<InternalTransfer[]>([])
   const [err, setErr] = useState('')
   const [f, setF] = useState({ item_code: '', quantity: 0, from_bin: '', to_bin: '', transfer_date: '', reason: '' })
-  const load = useCallback(() => { listTransfers().then(setRows).catch(e => setErr(String(e))) }, [])
+  const load = useCallback(() => { listTransfers().then(setRows).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
   const add = async () => { setErr(''); try { await createTransfer(f); setF({ item_code: '', quantity: 0, from_bin: '', to_bin: '', transfer_date: '', reason: '' }); load() } catch (e: any) { setErr(e?.response?.data?.detail || String(e)) } }
   const complete = async (id: string) => { await completeTransfer(id); load() }

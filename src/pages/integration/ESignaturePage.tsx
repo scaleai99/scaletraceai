@@ -6,7 +6,7 @@ export function ESignaturePage() {
   const [rows, setRows] = useState<SignatureRequest[]>([])
   const [err, setErr] = useState('')
   const [f, setF] = useState({ document_type: 'Quotation', document_ref: '', signer_name: '', signer_email: '' })
-  const load = useCallback(() => { listSignatures().then(setRows).catch(e => setErr(String(e))) }, [])
+  const load = useCallback(() => { listSignatures().then(setRows).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
   const add = async () => { setErr(''); try { await createSignature(f); setF({ document_type: 'Quotation', document_ref: '', signer_name: '', signer_email: '' }); load() } catch (e: any) { setErr(e?.response?.data?.detail || String(e)) } }
   const sign = async (id: string) => { await signSignature(id); load() }

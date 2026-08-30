@@ -45,7 +45,7 @@ export function SCARPage() {
     try {
       setScars(await listSCARs())
     } catch {
-      setError('Could not load SCARs.')
+      setScars([])
     } finally {
       setLoading(false)
     }

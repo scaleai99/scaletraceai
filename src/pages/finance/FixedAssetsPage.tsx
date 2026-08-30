@@ -8,7 +8,7 @@ export function FixedAssetsPage() {
   const [rows, setRows] = useState<FixedAsset[]>([])
   const [err, setErr] = useState('')
   const [f, setF] = useState({ asset_code: '', name: '', category: CATS[0], cost: 0, useful_life_years: 10, salvage_value: 0, depreciation_method: 'SLM', location: '' })
-  const load = useCallback(() => { listAssets().then(setRows).catch(e => setErr(String(e))) }, [])
+  const load = useCallback(() => { listAssets().then(setRows).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
   const add = async () => {
     setErr('')

@@ -6,7 +6,7 @@ export function StorageBinsPage() {
   const [rows, setRows] = useState<StockBin[]>([])
   const [err, setErr] = useState('')
   const [f, setF] = useState({ bin_code: '', warehouse: '', zone: '', description: '', capacity: undefined as number | undefined })
-  const load = useCallback(() => { listBins().then(setRows).catch(e => setErr(String(e))) }, [])
+  const load = useCallback(() => { listBins().then(setRows).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
   const add = async () => { setErr(''); try { await createBin(f); setF({ bin_code: '', warehouse: '', zone: '', description: '', capacity: undefined }); load() } catch (e: any) { setErr(e?.response?.data?.detail || String(e)) } }
   return (

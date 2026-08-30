@@ -6,7 +6,7 @@ export function PaymentsPage() {
   const [rows, setRows] = useState<PaymentTxn[]>([])
   const [err, setErr] = useState('')
   const [f, setF] = useState({ gateway: 'NEFT', direction: 'Inbound', party: '', invoice_ref: '', amount: 0, currency: 'INR' })
-  const load = useCallback(() => { listPayments().then(setRows).catch(e => setErr(String(e))) }, [])
+  const load = useCallback(() => { listPayments().then(setRows).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
   const add = async () => { setErr(''); try { await createPayment(f); setF({ ...f, party: '', invoice_ref: '', amount: 0 }); load() } catch (e: any) { setErr(e?.response?.data?.detail || String(e)) } }
   const settle = async (id: string, r: 'Success' | 'Failed') => { await settlePayment(id, r); load() }

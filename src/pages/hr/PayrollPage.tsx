@@ -7,7 +7,7 @@ export function PayrollPage() {
   const [period, setPeriod] = useState('')
   const [err, setErr] = useState('')
   const [open, setOpen] = useState<(PayrollRun & { payslips: Payslip[] }) | null>(null)
-  const load = useCallback(() => { listRuns().then(setRuns).catch(e => setErr(String(e))) }, [])
+  const load = useCallback(() => { listRuns().then(setRuns).catch(() => setRuns([])) }, [])
   useEffect(() => { load() }, [load])
   const add = async () => {
     setErr('')

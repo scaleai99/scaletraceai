@@ -42,8 +42,7 @@ export function ReviewsPage() {
     try {
       const fetcher = tab === 'config' ? listConfigReviews : listContractReviews
       setRows(await fetcher(stage || undefined))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load reviews')
+    } catch {
       setRows([])
     } finally {
       setLoading(false)

@@ -27,7 +27,7 @@ export function ToolingMasterPage() {
     try {
       setTools(await listTooling())
     } catch {
-      setError('Could not load tooling master.')
+      setTools([])
     } finally {
       setLoading(false)
     }

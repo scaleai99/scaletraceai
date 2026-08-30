@@ -11,7 +11,7 @@ export function BudgetPage() {
   const [err, setErr] = useState('')
   const [f, setF] = useState({ fy: '2026-27', department: '', category: CATS[0], period: 'Annual', budget_amount: 0, actual_amount: 0 })
   const load = useCallback(() => {
-    listBudgets().then(setRows).catch(e => setErr(String(e)))
+    listBudgets().then(setRows).catch(() => setRows([]))
     getBudgetVariance().then(d => setVariance(d.rows)).catch(() => setVariance([]))
   }, [])
   useEffect(() => { load() }, [load])

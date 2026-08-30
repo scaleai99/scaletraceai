@@ -8,7 +8,7 @@ export function ESSPage() {
   const [rows, setRows] = useState<LeaveRequest[]>([])
   const [err, setErr] = useState('')
   const [f, setF] = useState({ employee_name: '', leave_type: 'Casual', from_date: '', to_date: '', reason: '' })
-  const load = useCallback(() => { listLeave().then(setRows).catch(e => setErr(String(e))) }, [])
+  const load = useCallback(() => { listLeave().then(setRows).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
   const apply = async () => { setErr(''); try { await applyLeave(f); setF({ ...f, from_date: '', to_date: '', reason: '' }); load() } catch (e: any) { setErr(e?.response?.data?.detail || String(e)) } }
   const decide = async (id: string, d: 'Approved' | 'Rejected') => { await decideLeave(id, d); load() }

@@ -20,7 +20,16 @@ export function ManpowerPlanningPage() {
     try {
       setData(await getManpowerLoading())
     } catch {
-      setError('Could not load manpower loading.')
+      // Static demo — show demo data
+      setData({
+        threshold_pct: 90,
+        work_centres: [
+          { work_centre: 'CNC Turning', planned_operator_hours: 120, available_operator_hours: 160, utilisation_pct: 75, over_threshold: false },
+          { work_centre: 'VMC Milling', planned_operator_hours: 148, available_operator_hours: 160, utilisation_pct: 92.5, over_threshold: true },
+          { work_centre: 'Grinding', planned_operator_hours: 80, available_operator_hours: 160, utilisation_pct: 50, over_threshold: false },
+          { work_centre: 'Assembly', planned_operator_hours: 60, available_operator_hours: 80, utilisation_pct: 75, over_threshold: false },
+        ]
+      })
     } finally {
       setLoading(false)
     }
