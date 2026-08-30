@@ -1,7 +1,7 @@
 /**
  * Supplier Quality Clause Library API client - Module 03 gap (Req 3.12/3.13).
  */
-import axios from 'axios'
+import { apiClient } from './axiosClient'
 
 const V1 = '/api/v1'
 
@@ -25,15 +25,15 @@ export interface QualityClauseCreate {
 }
 
 export async function listClauses(supplierId: string): Promise<QualityClause[]> {
-  const { data } = await axios.get<QualityClause[]>(`${V1}/suppliers/${supplierId}/quality-clauses`)
-  return data
+  const { data } = await apiClient.get<QualityClause[]>(`${V1}/suppliers/${supplierId}/quality-clauses`)
+  return Array.isArray(data) ? data : []
 }
 
 export async function createClause(
   supplierId: string,
   body: QualityClauseCreate,
 ): Promise<QualityClause> {
-  const { data } = await axios.post<QualityClause>(
+  const { data } = await apiClient.post<QualityClause>(
     `${V1}/suppliers/${supplierId}/quality-clauses`,
     body,
   )
@@ -41,5 +41,5 @@ export async function createClause(
 }
 
 export async function deleteClause(supplierId: string, clauseId: string): Promise<void> {
-  await axios.delete(`${V1}/suppliers/${supplierId}/quality-clauses/${clauseId}`)
+  await apiClient.delete(`${V1}/suppliers/${supplierId}/quality-clauses/${clauseId}`)
 }

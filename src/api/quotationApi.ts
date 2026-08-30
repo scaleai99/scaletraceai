@@ -1,9 +1,9 @@
 /**
  * Quotation API client - Module 10.
- * All functions call the backend via axios at /api/v1/quotations.
+ * All functions call the backend via apiClient at /api/v1/quotations.
  */
 
-import axios from 'axios'
+import { apiClient } from './axiosClient'
 
 const BASE = '/api/v1/quotations'
 
@@ -87,43 +87,43 @@ export async function listQuotations(params: {
   skip?: number
   limit?: number
 } = {}): Promise<Quotation[]> {
-  const { data } = await axios.get<Quotation[]>(BASE, { params })
-  return data
+  const { data } = await apiClient.get<Quotation[]>(BASE, { params })
+  return Array.isArray(data) ? data : []
 }
 
 export async function getQuotation(id: string): Promise<Quotation> {
-  const { data } = await axios.get<Quotation>(`${BASE}/${id}`)
+  const { data } = await apiClient.get<Quotation>(`${BASE}/${id}`)
   return data
 }
 
 export async function createQuotation(body: QuotationCreate): Promise<Quotation> {
-  const { data } = await axios.post<Quotation>(BASE, body)
+  const { data } = await apiClient.post<Quotation>(BASE, body)
   return data
 }
 
 export async function updateQuotation(id: string, body: QuotationUpdate): Promise<Quotation> {
-  const { data } = await axios.patch<Quotation>(`${BASE}/${id}`, body)
+  const { data } = await apiClient.patch<Quotation>(`${BASE}/${id}`, body)
   return data
 }
 
 export async function approveQuotation(id: string): Promise<Quotation> {
-  const { data } = await axios.post<Quotation>(`${BASE}/${id}/approve`)
+  const { data } = await apiClient.post<Quotation>(`${BASE}/${id}/approve`)
   return data
 }
 
 export async function sendQuotation(id: string): Promise<Blob> {
-  const { data } = await axios.post(`${BASE}/${id}/send`, null, {
+  const { data } = await apiClient.post(`${BASE}/${id}/send`, null, {
     responseType: 'blob',
   })
   return data
 }
 
 export async function reviseQuotation(id: string): Promise<Quotation> {
-  const { data } = await axios.post<Quotation>(`${BASE}/${id}/revise`)
+  const { data } = await apiClient.post<Quotation>(`${BASE}/${id}/revise`)
   return data
 }
 
 export async function convertQuotationToCPO(id: string): Promise<ConvertToCPOResponse> {
-  const { data } = await axios.post<ConvertToCPOResponse>(`${BASE}/${id}/convert-to-cpo`)
+  const { data } = await apiClient.post<ConvertToCPOResponse>(`${BASE}/${id}/convert-to-cpo`)
   return data
 }

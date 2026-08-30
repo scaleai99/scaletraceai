@@ -90,7 +90,7 @@ export interface WorkOrder {
 // ---------------------------------------------------------------------------
 
 export const listMachines = () =>
-  apiClient.get<Machine[]>('/api/v1/engineering-releases/machines').then((r) => r.data)
+  apiClient.get<Machine[]>('/api/v1/engineering-releases/machines').then((r) => Array.isArray(r.data) ? r.data : [])
 
 export const createMachine = (data: Partial<Machine>) =>
   apiClient.post<Machine>('/api/v1/engineering-releases/machines', data).then((r) => r.data)
@@ -100,7 +100,7 @@ export const createMachine = (data: Partial<Machine>) =>
 // ---------------------------------------------------------------------------
 
 export const listEngineeringReleases = (params?: Record<string, unknown>) =>
-  apiClient.get<EngineeringRelease[]>('/api/v1/engineering-releases', { params }).then((r) => r.data)
+  apiClient.get<EngineeringRelease[]>('/api/v1/engineering-releases', { params }).then((r) => Array.isArray(r.data) ? r.data : [])
 
 export const getEngineeringRelease = (id: string) =>
   apiClient.get<EngineeringRelease>(`/api/v1/engineering-releases/${id}`).then((r) => r.data)
@@ -119,20 +119,20 @@ export const approveEngineeringRelease = (id: string) =>
 // ---------------------------------------------------------------------------
 
 export const listProductionOrders = (params?: Record<string, unknown>) =>
-  apiClient.get<ProductionOrder[]>('/api/v1/production-orders', { params }).then((r) => r.data)
+  apiClient.get<ProductionOrder[]>('/api/v1/production-orders', { params }).then((r) => Array.isArray(r.data) ? r.data : [])
 
 export const getMachineLoading = () =>
-  apiClient.get<MachineLoading[]>('/api/v1/production-orders/machine-loading').then((r) => r.data)
+  apiClient.get<MachineLoading[]>('/api/v1/production-orders/machine-loading').then((r) => Array.isArray(r.data) ? r.data : [])
 
 export const getMPS = () =>
-  apiClient.get<ProductionOrder[]>('/api/v1/production-orders/mps').then((r) => r.data)
+  apiClient.get<ProductionOrder[]>('/api/v1/production-orders/mps').then((r) => Array.isArray(r.data) ? r.data : [])
 
 // ---------------------------------------------------------------------------
 // Work Orders (MES)
 // ---------------------------------------------------------------------------
 
 export const listWorkOrders = (params?: Record<string, unknown>) =>
-  apiClient.get<WorkOrder[]>('/api/v1/work-orders', { params }).then((r) => r.data)
+  apiClient.get<WorkOrder[]>('/api/v1/work-orders', { params }).then((r) => Array.isArray(r.data) ? r.data : [])
 
 export const getWorkOrder = (id: string) =>
   apiClient.get<WorkOrder>(`/api/v1/work-orders/${id}`).then((r) => r.data)

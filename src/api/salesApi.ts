@@ -1,9 +1,9 @@
 /**
  * Sales API client - Modules 11 (Customer PO) & 14 (Sales Order).
- * All functions call the backend via axios.
+ * All functions call the backend via apiClient.
  */
 
-import axios from 'axios'
+import { apiClient } from './axiosClient'
 
 const CPO_BASE = '/api/v1/customer-pos'
 const SO_BASE = '/api/v1/sales-orders'
@@ -118,17 +118,17 @@ export async function listCustomerPOs(params: {
   skip?: number
   limit?: number
 } = {}): Promise<CustomerPO[]> {
-  const { data } = await axios.get<CustomerPO[]>(CPO_BASE, { params })
-  return data
+  const { data } = await apiClient.get<CustomerPO[]>(CPO_BASE, { params })
+  return Array.isArray(data) ? data : []
 }
 
 export async function getCustomerPO(id: string): Promise<CustomerPO> {
-  const { data } = await axios.get<CustomerPO>(`${CPO_BASE}/${id}`)
+  const { data } = await apiClient.get<CustomerPO>(`${CPO_BASE}/${id}`)
   return data
 }
 
 export async function createCustomerPO(body: CustomerPOCreate): Promise<CustomerPO> {
-  const { data } = await axios.post<CustomerPO>(CPO_BASE, body)
+  const { data } = await apiClient.post<CustomerPO>(CPO_BASE, body)
   return data
 }
 
@@ -137,7 +137,7 @@ export async function transitionCustomerPO(
   target_state: string,
   comment?: string
 ): Promise<CustomerPO> {
-  const { data } = await axios.post<CustomerPO>(`${CPO_BASE}/${id}/transition`, {
+  const { data } = await apiClient.post<CustomerPO>(`${CPO_BASE}/${id}/transition`, {
     target_state,
     comment: comment ?? null,
   })
@@ -152,14 +152,14 @@ export async function uploadPODocument(id: string, file: File): Promise<{
 }> {
   const formData = new FormData()
   formData.append('file', file)
-  const { data } = await axios.post(`${CPO_BASE}/${id}/upload-po`, formData, {
+  const { data } = await apiClient.post(`${CPO_BASE}/${id}/upload-po`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
   return data
 }
 
 export async function convertCPOtoSO(id: string): Promise<ConvertToSOResponse> {
-  const { data } = await axios.post<ConvertToSOResponse>(
+  const { data } = await apiClient.post<ConvertToSOResponse>(
     `${CPO_BASE}/${id}/convert-to-so`
   )
   return data
@@ -176,12 +176,12 @@ export async function listSalesOrders(params: {
   skip?: number
   limit?: number
 } = {}): Promise<SalesOrder[]> {
-  const { data } = await axios.get<SalesOrder[]>(SO_BASE, { params })
-  return data
+  const { data } = await apiClient.get<SalesOrder[]>(SO_BASE, { params })
+  return Array.isArray(data) ? data : []
 }
 
 export async function getSalesOrder(id: string): Promise<SalesOrder> {
-  const { data } = await axios.get<SalesOrder>(`${SO_BASE}/${id}`)
+  const { data } = await apiClient.get<SalesOrder>(`${SO_BASE}/${id}`)
   return data
 }
 
@@ -189,7 +189,7 @@ export async function cancelSalesOrder(
   id: string,
   cancellation_reason: string
 ): Promise<SalesOrder> {
-  const { data } = await axios.post<SalesOrder>(`${SO_BASE}/${id}/cancel`, {
+  const { data } = await apiClient.post<SalesOrder>(`${SO_BASE}/${id}/cancel`, {
     cancellation_reason,
   })
   return data
@@ -200,7 +200,7 @@ export async function transitionSalesOrder(
   target_state: string,
   comment?: string
 ): Promise<SalesOrder> {
-  const { data } = await axios.post<SalesOrder>(`${SO_BASE}/${id}/transition`, {
+  const { data } = await apiClient.post<SalesOrder>(`${SO_BASE}/${id}/transition`, {
     target_state,
     comment: comment ?? null,
   })

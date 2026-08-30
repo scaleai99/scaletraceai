@@ -275,7 +275,7 @@ export interface SpecificationListParams {
 /** List suppliers with optional filters. */
 export async function listSuppliers(params: SupplierListParams = {}): Promise<Supplier[]> {
   const { data } = await apiClient.get<Supplier[]>(BASE, { params })
-  return data
+  return Array.isArray(data) ? data : []
 }
 
 /** Get a single supplier with capabilities and last audit eagerly loaded. */
@@ -328,7 +328,7 @@ export async function deleteSupplier(id: string): Promise<void> {
 /** Get the Approved Vendor List - Active suppliers only. */
 export async function getAVL(): Promise<Supplier[]> {
   const { data } = await apiClient.get<Supplier[]>(`${BASE}/avl`)
-  return data
+  return Array.isArray(data) ? data : []
 }
 
 // ---------------------------------------------------------------------------
@@ -338,7 +338,7 @@ export async function getAVL(): Promise<Supplier[]> {
 /** List audits for a supplier ordered by date descending. */
 export async function listAudits(supplierId: string): Promise<SupplierAudit[]> {
   const { data } = await apiClient.get<SupplierAudit[]>(`${BASE}/${supplierId}/audits`)
-  return data
+  return Array.isArray(data) ? data : []
 }
 
 /** Create a new audit record for a supplier. */
@@ -401,7 +401,7 @@ export interface SupplierDocumentCreatePayload {
 }
 export async function listSupplierDocuments(sid: string): Promise<SupplierDocument[]> {
   const { data } = await apiClient.get<SupplierDocument[]>(`${BASE}/${sid}/documents`)
-  return data
+  return Array.isArray(data) ? data : []
 }
 export async function addSupplierDocument(sid: string, payload: SupplierDocumentCreatePayload): Promise<SupplierDocument> {
   const { data } = await apiClient.post<SupplierDocument>(`${BASE}/${sid}/documents`, payload)
@@ -432,7 +432,7 @@ export interface SupplierApprovedProductCreatePayload {
 }
 export async function listSupplierApprovedProducts(sid: string): Promise<SupplierApprovedProduct[]> {
   const { data } = await apiClient.get<SupplierApprovedProduct[]>(`${BASE}/${sid}/approved-products`)
-  return data
+  return Array.isArray(data) ? data : []
 }
 export async function addSupplierApprovedProduct(sid: string, payload: SupplierApprovedProductCreatePayload): Promise<SupplierApprovedProduct> {
   const { data } = await apiClient.post<SupplierApprovedProduct>(`${BASE}/${sid}/approved-products`, payload)
@@ -444,7 +444,7 @@ export async function deleteSupplierApprovedProduct(sid: string, productId: stri
 
 export async function listSupplierContacts(supplierId: string): Promise<SupplierContact[]> {
   const { data } = await apiClient.get<SupplierContact[]>(`${BASE}/${supplierId}/contacts`)
-  return data
+  return Array.isArray(data) ? data : []
 }
 
 export async function addSupplierContact(supplierId: string, payload: SupplierContactCreatePayload): Promise<SupplierContact> {
@@ -458,7 +458,7 @@ export async function deleteSupplierContact(supplierId: string, contactId: strin
 
 export async function listSpecifications(params: SpecificationListParams = {}): Promise<Specification[]> {
   const { data } = await apiClient.get<Specification[]>(SPEC_BASE, { params })
-  return data
+  return Array.isArray(data) ? data : []
 }
 
 /** Create a new specification (Quality_Manager / Administrator). */

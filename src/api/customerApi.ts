@@ -270,7 +270,7 @@ export interface CustomerQualityRequirementPayload {
  */
 export async function listCustomers(params: CustomerListParams = {}): Promise<Customer[]> {
   const { data } = await apiClient.get<Customer[]>(BASE, { params })
-  return data
+  return Array.isArray(data) ? data : []
 }
 
 /**
@@ -334,7 +334,7 @@ export async function deleteCustomerSite(customerId: string, siteId: string): Pr
  */
 export async function listCustomerSites(customerId: string): Promise<CustomerSite[]> {
   const { data } = await apiClient.get<CustomerSite[]>(`${BASE}/${customerId}/sites`)
-  return data
+  return Array.isArray(data) ? data : []
 }
 
 /**
@@ -369,7 +369,7 @@ export interface CustomerContactCreatePayload {
 
 export async function listCustomerContacts(customerId: string): Promise<CustomerContact[]> {
   const { data } = await apiClient.get<CustomerContact[]>(`${BASE}/${customerId}/contacts`)
-  return data
+  return Array.isArray(data) ? data : []
 }
 
 export async function addCustomerContact(customerId: string, payload: CustomerContactCreatePayload): Promise<CustomerContact> {

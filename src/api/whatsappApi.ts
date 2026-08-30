@@ -1,7 +1,7 @@
 /**
  * WhatsApp delivery API client - Module 34 gap (Req 34.5).
  */
-import axios from 'axios'
+import { apiClient } from './axiosClient'
 
 const BASE = '/api/v1/documents'
 
@@ -19,15 +19,15 @@ export async function sendWhatsApp(
   docId: string,
   recipientNumber: string,
 ) {
-  const { data } = await axios.post(`${BASE}/${docType}/${docId}/send-whatsapp`, {
+  const { data } = await apiClient.post(`${BASE}/${docType}/${docId}/send-whatsapp`, {
     recipient_number: recipientNumber,
   })
   return data
 }
 
 export async function listWhatsAppLog(docType?: string): Promise<WhatsAppLog[]> {
-  const { data } = await axios.get<WhatsAppLog[]>(`${BASE}/whatsapp-delivery-log`, {
+  const { data } = await apiClient.get<WhatsAppLog[]>(`${BASE}/whatsapp-delivery-log`, {
     params: docType ? { doc_type: docType } : {},
   })
-  return data
+  return Array.isArray(data) ? data : []
 }

@@ -87,7 +87,7 @@ export interface StockLot {
 // ---------------------------------------------------------------------------
 
 export const listPRs = (params?: Record<string, unknown>) =>
-  apiClient.get<PurchaseRequisition[]>('/api/v1/purchase/requisitions', { params }).then((r) => r.data)
+  apiClient.get<PurchaseRequisition[]>('/api/v1/purchase/requisitions', { params }).then((r) => Array.isArray(r.data) ? r.data : [])
 
 export const createPR = (data: Partial<PurchaseRequisition>) =>
   apiClient.post<PurchaseRequisition>('/api/v1/purchase/requisitions', data).then((r) => r.data)
@@ -97,7 +97,7 @@ export const createPR = (data: Partial<PurchaseRequisition>) =>
 // ---------------------------------------------------------------------------
 
 export const listPOs = (params?: Record<string, unknown>) =>
-  apiClient.get<PurchaseOrder[]>('/api/v1/purchase/orders', { params }).then((r) => r.data)
+  apiClient.get<PurchaseOrder[]>('/api/v1/purchase/orders', { params }).then((r) => Array.isArray(r.data) ? r.data : [])
 
 export const getPO = (id: string) =>
   apiClient.get<PurchaseOrder>(`/api/v1/purchase/orders/${id}`).then((r) => r.data)
@@ -113,17 +113,17 @@ export const receivePO = (id: string, data: { receipt_date: string; heat_cert_nu
 // ---------------------------------------------------------------------------
 
 export const listGRNs = () =>
-  apiClient.get<GRN[]>('/api/v1/purchase/grns').then((r) => r.data)
+  apiClient.get<GRN[]>('/api/v1/purchase/grns').then((r) => Array.isArray(r.data) ? r.data : [])
 
 // ---------------------------------------------------------------------------
 // Inventory
 // ---------------------------------------------------------------------------
 
 export const listInventory = (params?: Record<string, unknown>) =>
-  apiClient.get<InventoryItem[]>('/api/v1/inventory', { params }).then((r) => r.data)
+  apiClient.get<InventoryItem[]>('/api/v1/inventory', { params }).then((r) => Array.isArray(r.data) ? r.data : [])
 
 export const getItemLots = (itemCode: string) =>
-  apiClient.get<StockLot[]>(`/api/v1/inventory/${itemCode}/lots`).then((r) => r.data)
+  apiClient.get<StockLot[]>(`/api/v1/inventory/${itemCode}/lots`).then((r) => Array.isArray(r.data) ? r.data : [])
 
 export const adjustStock = (
   itemCode: string,

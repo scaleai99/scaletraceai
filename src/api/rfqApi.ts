@@ -1,11 +1,11 @@
 /**
  * RFQ API client - Module 04.
  *
- * All functions call the backend via axios. Assumes a Vite proxy
+ * All functions call the backend via apiClient. Assumes a Vite proxy
  * or the backend is accessible at /api/v1/rfqs.
  */
 
-import axios from 'axios'
+import { apiClient } from './axiosClient'
 
 const BASE = '/api/v1/rfqs'
 const CUSTOMERS_BASE = '/api/v1/customers'
@@ -140,37 +140,37 @@ export interface ListRFQsParams {
 
 /** List RFQs with optional filters */
 export async function listRFQs(params: ListRFQsParams = {}): Promise<RFQ[]> {
-  const { data } = await axios.get<RFQ[]>(BASE, { params })
-  return data
+  const { data } = await apiClient.get<RFQ[]>(BASE, { params })
+  return Array.isArray(data) ? data : []
 }
 
 /** Get a single RFQ by ID with line items */
 export async function getRFQ(id: string): Promise<RFQ> {
-  const { data } = await axios.get<RFQ>(`${BASE}/${id}`)
+  const { data } = await apiClient.get<RFQ>(`${BASE}/${id}`)
   return data
 }
 
 /** Create a new RFQ */
 export async function createRFQ(body: RFQCreate): Promise<RFQ> {
-  const { data } = await axios.post<RFQ>(BASE, body)
+  const { data } = await apiClient.post<RFQ>(BASE, body)
   return data
 }
 
 /** Update RFQ header fields */
 export async function updateRFQ(id: string, body: RFQUpdate): Promise<RFQ> {
-  const { data } = await axios.patch<RFQ>(`${BASE}/${id}`, body)
+  const { data } = await apiClient.patch<RFQ>(`${BASE}/${id}`, body)
   return data
 }
 
 /** Transition RFQ state */
 export async function transitionRFQ(id: string, body: TransitionRequest): Promise<RFQ> {
-  const { data } = await axios.post<RFQ>(`${BASE}/${id}/transition`, body)
+  const { data } = await apiClient.post<RFQ>(`${BASE}/${id}/transition`, body)
   return data
 }
 
 /** Add a line item to an RFQ */
 export async function addLineItem(rfqId: string, body: RFQLineItemCreate): Promise<RFQLineItem> {
-  const { data } = await axios.post<RFQLineItem>(`${BASE}/${rfqId}/line-items`, body)
+  const { data } = await apiClient.post<RFQLineItem>(`${BASE}/${rfqId}/line-items`, body)
   return data
 }
 
@@ -180,13 +180,13 @@ export async function updateLineItem(
   lid: string,
   body: RFQLineItemUpdate
 ): Promise<RFQLineItem> {
-  const { data } = await axios.patch<RFQLineItem>(`${BASE}/${rfqId}/line-items/${lid}`, body)
+  const { data } = await apiClient.patch<RFQLineItem>(`${BASE}/${rfqId}/line-items/${lid}`, body)
   return data
 }
 
 /** Delete a line item */
 export async function deleteLineItem(rfqId: string, lid: string): Promise<void> {
-  await axios.delete(`${BASE}/${rfqId}/line-items/${lid}`)
+  await apiClient.delete(`${BASE}/${rfqId}/line-items/${lid}`)
 }
 
 /** Upload a drawing PDF for a line item */
@@ -197,7 +197,7 @@ export async function uploadDrawing(
 ): Promise<DrawingUploadResponse> {
   const formData = new FormData()
   formData.append('file', file)
-  const { data } = await axios.post<DrawingUploadResponse>(
+  const { data } = await apiClient.post<DrawingUploadResponse>(
     `${BASE}/${rfqId}/line-items/${lid}/upload-drawing`,
     formData,
     { headers: { 'Content-Type': 'multipart/form-data' } }
@@ -207,8 +207,8 @@ export async function uploadDrawing(
 
 /** List active customers for selector dropdowns */
 export async function listActiveCustomers(): Promise<CustomerOption[]> {
-  const { data } = await axios.get<CustomerOption[]>(CUSTOMERS_BASE, {
+  const { data } = await apiClient.get<CustomerOption[]>(CUSTOMERS_BASE, {
     params: { status: 'Active', limit: 200 },
   })
-  return data
+  return Array.isArray(data) ? data : []
 }

@@ -116,7 +116,7 @@ export interface ItemListParams {
 }
 
 export const listItems = (params?: ItemListParams) =>
-  apiClient.get<ItemRecord[]>('/api/v1/items/', { params: params || {} }).then((r) => r.data)
+  apiClient.get<ItemRecord[]>('/api/v1/items/', { params: params || {} }).then((r) => Array.isArray(r.data) ? r.data : [])
 
 export const createItem = (body: Partial<ItemRecord>) =>
   apiClient.post<ItemRecord>('/api/v1/items/', body).then((r) => r.data)

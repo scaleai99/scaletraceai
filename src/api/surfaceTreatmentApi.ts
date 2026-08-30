@@ -1,7 +1,7 @@
 /**
  * AI Surface Treatment Analysis API client - Module 06 gap (Req 6.9).
  */
-import axios from 'axios'
+import { apiClient } from './axiosClient'
 
 const BASE = '/api/v1/ai'
 
@@ -28,6 +28,6 @@ export interface SurfaceTreatmentRequest {
 export async function analyzeSurfaceTreatment(
   body: SurfaceTreatmentRequest,
 ): Promise<SurfaceTreatmentResult> {
-  const { data } = await axios.post<SurfaceTreatmentResult>(`${BASE}/surface-treatment-analysis`, body)
+  const { data } = await apiClient.post<SurfaceTreatmentResult>(`${BASE}/surface-treatment-analysis`, body)
   return data
 }
