@@ -324,38 +324,38 @@ function DashboardTab({ dashboard, loading, error, onRefresh }: DashboardTabProp
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard
               label="PM Due in 7 Days"
-              value={dashboard.pm_due_within_7_days}
+              value={dashboard.pm_due_within_7_days ?? 0}
               icon={<CalendarClock size={16} className="text-orange-600" />}
               colour="bg-orange-50"
-              valueClass={dashboard.pm_due_within_7_days > 0 ? 'text-orange-700' : 'text-gray-900'}
+              valueClass={(dashboard.pm_due_within_7_days ?? 0) > 0 ? 'text-orange-700' : 'text-gray-900'}
             />
             <StatCard
               label="Under Breakdown"
-              value={dashboard.machines_under_breakdown}
+              value={dashboard.machines_under_breakdown ?? 0}
               icon={<AlertTriangle size={16} className="text-red-600" />}
               colour="bg-red-50"
-              valueClass={dashboard.machines_under_breakdown > 0 ? 'text-red-700' : 'text-gray-900'}
+              valueClass={(dashboard.machines_under_breakdown ?? 0) > 0 ? 'text-red-700' : 'text-gray-900'}
             />
             <StatCard
               label="Avg Availability"
-              value={`${dashboard.avg_availability_pct.toFixed(1)}%`}
+              value={`${(dashboard.avg_availability_pct ?? 0).toFixed(1)}%`}
               icon={<Wrench size={16} className="text-green-600" />}
               colour="bg-green-50"
               valueClass="text-green-700"
             />
             <StatCard
               label="Total Records"
-              value={dashboard.total_records}
+              value={dashboard.total_records ?? 0}
               icon={<Wrench size={16} className="text-blue-600" />}
               colour="bg-blue-50"
             />
           </div>
 
-          {dashboard.recent_records.length > 0 && (
+          {(dashboard.recent_records ?? []).length > 0 && (
             <div>
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Recent Records</h3>
               <Table<MRow>
-                data={dashboard.recent_records as MRow[]}
+                data={(dashboard.recent_records ?? []) as MRow[]}
                 columns={columns}
                 rowKey={(r) => r.id as string}
                 emptyMessage="No recent records."
