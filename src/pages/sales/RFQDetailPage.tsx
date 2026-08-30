@@ -516,7 +516,7 @@ export function RFQDetailPage() {
     try {
       await deleteLineItem(rfq.id, lid)
       setRfq((prev) =>
-        prev ? { ...prev, line_items: prev.line_items.filter((l) => l.id !== lid) } : prev
+        prev ? { ...prev, line_items: (prev.line_items ?? []).filter((l) => l.id !== lid) } : prev
       )
     } catch {
       // silently skip

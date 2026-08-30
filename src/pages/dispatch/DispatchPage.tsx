@@ -285,7 +285,7 @@ function DCDetailPanel({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {dc.line_items.map((li) => (
+              {(dc.line_items ?? []).map((li) => (
                 <tr key={li.id} className="hover:bg-gray-50">
                   <td className="px-3 py-2 font-mono text-gray-800">{li.item_code ?? '-'}</td>
                   <td className="px-3 py-2 text-gray-700 max-w-xs truncate">{li.description ?? '-'}</td>

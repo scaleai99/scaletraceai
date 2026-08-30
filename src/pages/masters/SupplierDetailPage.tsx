@@ -638,8 +638,8 @@ export function SupplierDetailPage() {
   const loadContacts = useCallback(async (sid: string, fallback?: Supplier) => {
     try {
       const list = await listSupplierContacts(sid)
-      if (list.length > 0) {
-        setContacts(list.map((c) => ({ id: c.id, name: c.name ?? '', designation: c.designation ?? '', email: c.email ?? '', phone: c.phone ?? '', isPrimary: !!c.is_primary })))
+      if ((list ?? []).length > 0) {
+        setContacts((list ?? []).map((c) => ({ id: c.id, name: c.name ?? '', designation: c.designation ?? '', email: c.email ?? '', phone: c.phone ?? '', isPrimary: !!c.is_primary })))
       } else {
         const f = fallback as unknown as { contact_name?: string; contact_email?: string; contact_mobile?: string } | undefined
         if (f && (f.contact_name || f.contact_email || f.contact_mobile)) {
@@ -663,8 +663,8 @@ export function SupplierDetailPage() {
         setSupplier(data)
         populateForm(data)
         loadContacts(id!, data)
-        listSupplierApprovedProducts(id!).then((ps) => setApprovedProducts(ps.map((x) => ({ id: x.id, material: x.material ?? '', specification: x.specification ?? '', form: x.form ?? '', condition: x.condition ?? '', approvedOn: x.approved_on ?? '', status: x.status ?? 'Approved' })))).catch(() => {})
-        listSupplierDocuments(id!).then((ds) => setSupplierDocs(ds.map((x) => ({ id: x.id, docType: x.document_type ?? '', docNumber: x.doc_number ?? '', revision: x.revision ?? '', issueDate: x.issue_date ?? '', expiryDate: x.expiry_date ?? '', status: x.status ?? 'Valid' })))).catch(() => {})
+        listSupplierApprovedProducts(id!).then((ps) => setApprovedProducts((ps ?? []).map((x) => ({ id: x.id, material: x.material ?? '', specification: x.specification ?? '', form: x.form ?? '', condition: x.condition ?? '', approvedOn: x.approved_on ?? '', status: x.status ?? 'Approved' })))).catch(() => {})
+        listSupplierDocuments(id!).then((ds) => setSupplierDocs((ds ?? []).map((x) => ({ id: x.id, docType: x.document_type ?? '', docNumber: x.doc_number ?? '', revision: x.revision ?? '', issueDate: x.issue_date ?? '', expiryDate: x.expiry_date ?? '', status: x.status ?? 'Valid' })))).catch(() => {})
         getScorecard(id!).then(setScorecard).catch(() => {})
       })
       .catch((err) => {

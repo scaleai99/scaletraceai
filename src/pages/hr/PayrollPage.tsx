@@ -64,10 +64,10 @@ function RunDrawer({ run, onClose, refresh }: { run: PayrollRun & { payslips: Pa
         <p className="text-xs text-gray-500 mb-2">PF (12% of basic, capped ‚¹15k) and ESI (0.75% if gross ‰¤ ‚¹21k) are auto-calculated.</p>
         <table className="w-full text-xs border border-gray-200 rounded">
           <thead className="bg-gray-50 text-gray-600"><tr><th className="text-left px-2 py-1">Employee</th><th className="text-right px-2 py-1">Gross</th><th className="text-right px-2 py-1">PF</th><th className="text-right px-2 py-1">ESI</th><th className="text-right px-2 py-1">TDS</th><th className="text-right px-2 py-1">Net</th></tr></thead>
-          <tbody>{run.payslips.map(p => <tr key={p.id} className="border-t border-gray-100"><td className="px-2 py-1">{p.employee_name}</td><td className="px-2 py-1 text-right">{p.gross.toFixed(0)}</td><td className="px-2 py-1 text-right">{p.pf.toFixed(0)}</td><td className="px-2 py-1 text-right">{p.esi.toFixed(0)}</td><td className="px-2 py-1 text-right">{p.tds.toFixed(0)}</td><td className="px-2 py-1 text-right font-medium">{p.net_pay.toFixed(0)}</td></tr>)}
-            {run.payslips.length === 0 && <tr><td colSpan={6} className="px-2 py-4 text-center text-gray-400">No payslips yet.</td></tr>}</tbody>
+          <tbody>{(run.payslips ?? []).map(p => <tr key={p.id} className="border-t border-gray-100"><td className="px-2 py-1">{p.employee_name}</td><td className="px-2 py-1 text-right">{p.gross.toFixed(0)}</td><td className="px-2 py-1 text-right">{p.pf.toFixed(0)}</td><td className="px-2 py-1 text-right">{p.esi.toFixed(0)}</td><td className="px-2 py-1 text-right">{p.tds.toFixed(0)}</td><td className="px-2 py-1 text-right font-medium">{p.net_pay.toFixed(0)}</td></tr>)}
+            {(run.payslips ?? []).length === 0 && <tr><td colSpan={6} className="px-2 py-4 text-center text-gray-400">No payslips yet.</td></tr>}</tbody>
         </table>
-        {editable && run.payslips.length > 0 && <button onClick={process} className="mt-3 bg-green-600 text-white text-sm rounded px-3 py-1">Process run</button>}
+        {editable && (run.payslips ?? []).length > 0 && <button onClick={process} className="mt-3 bg-green-600 text-white text-sm rounded px-3 py-1">Process run</button>}
       </div>
     </div>
   )
