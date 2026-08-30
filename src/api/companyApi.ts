@@ -308,7 +308,7 @@ export interface DocumentNumberingUpdatePayload extends Partial<DocumentNumberin
 
 export async function getCompanies(): Promise<Company[]> {
   const { data } = await apiClient.get<Company[]>(BASE)
-  return data
+  return Array.isArray(data) ? data : []
 }
 
 export async function getCompany(id: string): Promise<Company> {
@@ -346,7 +346,7 @@ export async function activateCompany(id: string): Promise<Company> {
 
 export async function listPlants(companyId: string): Promise<Plant[]> {
   const { data } = await apiClient.get<Plant[]>(`${BASE}/${companyId}/plants`)
-  return data
+  return Array.isArray(data) ? data : []
 }
 
 export async function createPlant(companyId: string, payload: PlantCreatePayload): Promise<Plant> {
@@ -364,7 +364,7 @@ export async function deletePlant(companyId: string, plantId: string): Promise<v
 
 export async function listHolidays(companyId: string): Promise<PublicHoliday[]> {
   const { data } = await apiClient.get<PublicHoliday[]>(`${BASE}/${companyId}/holidays`)
-  return data
+  return Array.isArray(data) ? data : []
 }
 
 export async function seedHolidays(companyId: string): Promise<HolidaySeedResponse> {
@@ -399,7 +399,7 @@ export async function gstinLookup(gstin: string): Promise<GSTINLookupResponse> {
 
 export async function listCompanyDocuments(companyId: string): Promise<CompanyDocument[]> {
   const { data } = await apiClient.get<CompanyDocument[]>(`${BASE}/${companyId}/documents`)
-  return data
+  return Array.isArray(data) ? data : []
 }
 
 export async function createCompanyDocument(
@@ -429,7 +429,7 @@ export async function deleteCompanyDocument(companyId: string, docId: string): P
 
 export async function listDocNumbering(companyId: string): Promise<DocumentNumbering[]> {
   const { data } = await apiClient.get<DocumentNumbering[]>(`${BASE}/${companyId}/doc-numbering`)
-  return data
+  return Array.isArray(data) ? data : []
 }
 
 export async function createDocNumbering(
