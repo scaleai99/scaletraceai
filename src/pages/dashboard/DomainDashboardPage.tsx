@@ -3,6 +3,103 @@ import { useParams } from 'react-router-dom'
 import { RefreshCw } from 'lucide-react'
 import { getDomainDashboard, type DomainDashboard, type Kpi, type ChartSeries } from '../../api/dashboardsApi'
 
+// ---------------------------------------------------------------------------
+// Demo fallback data — shown when API is unreachable (static demo deployment)
+// ---------------------------------------------------------------------------
+const DEMO_DASHBOARDS: Record<string, DomainDashboard> = {
+  sales: {
+    domain: 'sales', title: 'Sales Dashboard',
+    kpis: [
+      { label: 'Open RFQs', value: 12, tone: 'info' },
+      { label: 'Quotations Sent', value: 8, tone: 'good' },
+      { label: 'Orders Won', value: 5, tone: 'good' },
+      { label: 'Pipeline Value', value: '₹87.5L', tone: 'info' },
+    ],
+    charts: [
+      { type: 'donut', title: 'RFQ Status', data: [{ label: 'Received', value: 4 }, { label: 'AI Costing', value: 3 }, { label: 'Quoted', value: 3 }, { label: 'Won', value: 2 }] },
+      { type: 'bar', title: 'Revenue by Customer (₹L)', data: [{ label: 'Kun Aerospace', value: 32 }, { label: 'Collins Aerospace', value: 28 }, { label: 'Honeywell', value: 18 }, { label: 'Moog Controls', value: 9 }] },
+    ],
+  },
+  production: {
+    domain: 'production', title: 'Production Dashboard',
+    kpis: [
+      { label: 'Active Work Orders', value: 14, tone: 'info' },
+      { label: 'OEE', value: '78.6%', tone: 'good' },
+      { label: 'On-Time Completion', value: '91%', tone: 'good' },
+      { label: 'Scrap Rate', value: '2.1%', tone: 'warn' },
+    ],
+    charts: [
+      { type: 'donut', title: 'Work Order Status', data: [{ label: 'In Progress', value: 7 }, { label: 'Planned', value: 4 }, { label: 'Completed', value: 3 }] },
+      { type: 'bar', title: 'Output by Part Family', data: [{ label: 'Brackets', value: 42 }, { label: 'Housings', value: 31 }, { label: 'Shafts', value: 18 }, { label: 'Flanges', value: 12 }] },
+    ],
+  },
+  quality: {
+    domain: 'quality', title: 'Quality Dashboard',
+    kpis: [
+      { label: 'Open NCRs', value: 3, tone: 'warn' },
+      { label: 'CAPAs In Progress', value: 2, tone: 'warn' },
+      { label: 'FAIRs Approved', value: 7, tone: 'good' },
+      { label: 'Rejection Rate', value: '1.4%', tone: 'good' },
+    ],
+    charts: [
+      { type: 'donut', title: 'NCR by Disposition', data: [{ label: 'Use As-Is', value: 1 }, { label: 'Rework', value: 2 }, { label: 'Scrap', value: 1 }] },
+      { type: 'bar', title: 'Defects by Category', data: [{ label: 'Dimensional', value: 5 }, { label: 'Surface', value: 3 }, { label: 'Material', value: 2 }, { label: 'Other', value: 1 }] },
+    ],
+  },
+  purchase: {
+    domain: 'purchase', title: 'Purchase Dashboard',
+    kpis: [
+      { label: 'Open PRs', value: 6, tone: 'info' },
+      { label: 'POs Raised', value: 4, tone: 'info' },
+      { label: 'Pending GRNs', value: 2, tone: 'warn' },
+      { label: 'Purchase Value', value: '₹24.2L', tone: 'info' },
+    ],
+    charts: [
+      { type: 'donut', title: 'PO Status', data: [{ label: 'Draft', value: 2 }, { label: 'Approved', value: 4 }, { label: 'GRN Pending', value: 2 }] },
+      { type: 'bar', title: 'Spend by Supplier (₹L)', data: [{ label: 'Bharat Aluminium', value: 11 }, { label: 'Precision Coatings', value: 8 }, { label: 'TechnoForge', value: 5 }] },
+    ],
+  },
+  inventory: {
+    domain: 'inventory', title: 'Inventory Dashboard',
+    kpis: [
+      { label: 'Total SKUs', value: 248, tone: 'info' },
+      { label: 'Low Stock Items', value: 7, tone: 'warn' },
+      { label: 'Stock Value', value: '₹43.8L', tone: 'info' },
+      { label: 'Inventory Turns', value: 6.2, tone: 'good' },
+    ],
+    charts: [
+      { type: 'donut', title: 'Stock by Category', data: [{ label: 'Raw Material', value: 120 }, { label: 'WIP', value: 68 }, { label: 'Finished Goods', value: 60 }] },
+      { type: 'bar', title: 'Top Consumed Items (Qty)', data: [{ label: 'AL6061 Sheet', value: 84 }, { label: 'SS304 Rod', value: 62 }, { label: 'Titanium Billet', value: 38 }, { label: 'PTFE Seal', value: 27 }] },
+    ],
+  },
+  finance: {
+    domain: 'finance', title: 'Finance Dashboard',
+    kpis: [
+      { label: 'Revenue (MTD)', value: '₹38.6L', tone: 'good' },
+      { label: 'Outstanding AR', value: '₹12.4L', tone: 'warn' },
+      { label: 'Overdue AP', value: '₹3.1L', tone: 'bad' },
+      { label: 'Gross Margin', value: '34.2%', tone: 'good' },
+    ],
+    charts: [
+      { type: 'bar', title: 'Monthly Revenue (₹L)', data: [{ label: 'Apr', value: 28 }, { label: 'May', value: 33 }, { label: 'Jun', value: 31 }, { label: 'Jul', value: 38 }] },
+      { type: 'donut', title: 'Invoice Status', data: [{ label: 'Paid', value: 18 }, { label: 'Pending', value: 7 }, { label: 'Overdue', value: 3 }] },
+    ],
+  },
+  supplier: {
+    domain: 'supplier', title: 'Supplier Dashboard',
+    kpis: [
+      { label: 'Active Suppliers', value: 18, tone: 'info' },
+      { label: 'Avg Audit Score', value: '84 / 100', tone: 'good' },
+      { label: 'On-Time Delivery', value: '88%', tone: 'good' },
+      { label: 'Open SCARs', value: 2, tone: 'warn' },
+    ],
+    charts: [
+      { type: 'donut', title: 'Suppliers by Category', data: [{ label: 'Machining', value: 8 }, { label: 'Surface Treatment', value: 4 }, { label: 'Raw Material', value: 6 }] },
+      { type: 'bar', title: 'Delivery Performance (%)', data: [{ label: 'Bharat Aluminium', value: 92 }, { label: 'Precision Coatings', value: 85 }, { label: 'TechnoForge', value: 88 }] },
+    ],
+  },
+}
+
 const TONE: Record<string, string> = {
   good: 'text-green-600 border-green-200 bg-green-50',
   warn: 'text-amber-600 border-amber-200 bg-amber-50',
@@ -94,7 +191,14 @@ export function DomainDashboardPage() {
   const [err, setErr] = useState('')
   const load = useCallback(() => {
     setLoading(true); setErr('')
-    getDomainDashboard(domain).then(setData).catch((e) => setErr(e?.response?.data?.detail || String(e))).finally(() => setLoading(false))
+    getDomainDashboard(domain)
+      .then(setData)
+      .catch(() => {
+        // No backend — fall back to demo data silently
+        const demo = DEMO_DASHBOARDS[domain] ?? DEMO_DASHBOARDS['sales']
+        setData(demo)
+      })
+      .finally(() => setLoading(false))
   }, [domain])
   useEffect(() => { load() }, [load])
 
