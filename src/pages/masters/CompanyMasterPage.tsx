@@ -784,9 +784,48 @@ export function CompanyMasterPage() {
           if (!active) return
           setCompaniesList(companies)
         }
-      } catch (err: unknown) {
-        const axErr = err as { response?: { data?: { detail?: string } } }
-        if (active) setLoadError(axErr?.response?.data?.detail ?? 'Failed to load')
+      } catch {
+        // Static demo mode — no backend, use demo company data
+        if (!active) return
+        const demoCompany: Company = {
+          id: 'demo-company-001',
+          company_code: 'SCALEAI',
+          legal_name: 'Scale Trace AI Private Limited',
+          trade_name: 'Scale AI',
+          short_name: 'Scale AI',
+          status: 'Active',
+          cin_number: 'U72200KA2024PTC185123',
+          company_type: 'Private Limited',
+          incorporation_date: '2024-01-15',
+          industry: 'Aerospace',
+          business_type: 'Manufacturing',
+          base_currency: 'INR',
+          country: 'India',
+          timezone: 'Asia/Kolkata',
+          pan: 'AABCS1234A',
+          gstin: '29AABCS1234A1ZV',
+          tan: 'BLRS12345A',
+          registered_address_line1: '123 Tech Park, Electronic City',
+          registered_city: 'Bangalore',
+          registered_state: 'Karnataka',
+          registered_country: 'India',
+          registered_pin: '560100',
+          phone: '+91-80-12345678',
+          email: 'contact@scaletrace.ai',
+          website: 'https://scaletrace.ai',
+          created_at: '2024-01-15T10:00:00Z',
+          updated_at: '2024-01-20T14:30:00Z',
+        }
+        if (id && !isNew) {
+          setCompany(demoCompany)
+          populateForm(demoCompany)
+          setPlants([{ id: 'demo-plant-001', company_id: 'demo-company-001', plant_code: 'PL001', plant_name: 'Bangalore Unit', address: 'Electronic City, Bangalore', gstin: '29AABCS1234A1ZV', created_at: '2024-01-15T10:00:00Z' }])
+          setCompanyDocs([])
+          setDocNumberingConfigs([])
+          setHolidays([])
+        } else if (!isNew) {
+          setCompaniesList([demoCompany])
+        }
       } finally { if (active) setLoading(false) }
     }
     load()
