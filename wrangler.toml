@@ -1,0 +1,19 @@
+name = "scale-ai-erp"
+compatibility_date = "2024-09-23"
+
+[env.production]
+name = "scale-ai-erp"
+
+[site]
+bucket = "./dist"
+
+# Cloudflare Pages build configuration.
+# These settings are also configurable in the Cloudflare dashboard under
+# Pages > Your Project > Settings > Build & deployments.
+#
+# Build command : npm run build
+# Build output  : dist
+# Root directory: code/frontend   (set this in the CF dashboard)
+#
+# Environment variables to set in CF dashboard → Settings → Environment variables:
+#   VITE_API_BASE_URL = https://your-backend-url.com   (once backend is deployed)

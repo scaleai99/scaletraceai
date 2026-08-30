@@ -1,0 +1,24 @@
+# ── Build output ─────────────────────────────────────────────────────────
+dist/
+
+# ── Dependencies ─────────────────────────────────────────────────────────
+node_modules/
+
+# ── Secrets ──────────────────────────────────────────────────────────────
+.env
+!.env.example
+
+# ── Log / build artefact txt files from dev sessions ────────────────────
+*.txt
+*.log
+
+# ── Temp Python scripts ──────────────────────────────────────────────────
+tmp_*.py
+
+# ── TypeScript incremental build info ────────────────────────────────────
+*.tsbuildinfo
+.tsc*.log
+
+# ── OS ───────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

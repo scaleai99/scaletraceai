@@ -1,0 +1,14 @@
+﻿node_modules/
+dist/
+.vite/
+*.log
+*.txt
+build_*.txt
+phase*.txt
+capa_*.txt
+.env
+!.env.example
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
