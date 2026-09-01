@@ -41,6 +41,7 @@ import {
   Layers,
   GitBranch,
   ChevronDown,
+  FlaskConical,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -76,6 +77,7 @@ const navGroups: NavGroup[] = [
       { to: '/masters/suppliers', label: 'Suppliers', icon: Truck },
       { to: '/masters/employees', label: 'Employees', icon: Users },
       { to: '/masters/items', label: 'Items', icon: Package },
+      { to: '/masters/specifications', label: 'Specifications', icon: FileText },
       { to: '/masters/tooling', label: 'Tooling', icon: Wrench },
       { to: '/masters/step', label: 'STEP / 3D Ingest', icon: Box },
       { to: '/masters/exchange-rates', label: 'Exchange Rates', icon: Coins },
@@ -129,6 +131,12 @@ const navGroups: NavGroup[] = [
       { to: '/quality/apqp', label: 'APQP / PPAP', icon: ClipboardList },
       { to: '/quality/internal-audits', label: 'Internal Audits', icon: ShieldCheck },
       { to: '/quality/management-review', label: 'Management Review', icon: Presentation },
+    ],
+  },
+  {
+    label: 'Shop Floor - Special Process',
+    items: [
+      { to: '/shopfloor/chemical-batches', label: 'Chemical Batches', icon: FlaskConical },
     ],
   },
   {

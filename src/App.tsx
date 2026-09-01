@@ -123,6 +123,13 @@ import { SurfaceTreatmentPage } from './pages/quality/SurfaceTreatmentPage'     
 import { ManpowerPlanningPage } from './pages/production/ManpowerPlanningPage'       // Module 16 gap
 import { WhatsAppLogPage } from './pages/finance/WhatsAppLogPage'                    // Module 34 gap
 
+// """ Shop Floor - Special Process (Phase 1: Chemical Control) """"""""""""
+import { ChemicalBatchListPage } from './pages/shopfloor/ChemicalBatchListPage'
+import { ChemicalBatchDetailPage } from './pages/shopfloor/ChemicalBatchDetailPage'
+
+// """ Masters - Specification Master """"""""""""""""""""""""""""""""""""""
+import { SpecificationMasterPage } from './pages/masters/SpecificationMasterPage'
+
 
 // Wrapper to force remount when customer id changes
 function CustomerDetailPageWrapper() {
@@ -169,6 +176,8 @@ export default function App() {
           <Route path="masters/step" element={<StepUploadPage />} />
           {/* Module 09 gap - Tooling Master */}
           <Route path="masters/tooling" element={<ToolingMasterPage />} />
+          {/* Specification Master */}
+          <Route path="masters/specifications" element={<SpecificationMasterPage />} />
           {/* Module 34 gap - Exchange Rates */}
           <Route path="masters/exchange-rates" element={<ExchangeRatePage />} />
           <Route path="masters/departments" element={<DepartmentMasterPage />} />
@@ -237,6 +246,11 @@ export default function App() {
           {/* Module 19 - Work Orders / MES */}
           <Route path="production/work-orders" element={<WorkOrderPage />} />
           <Route path="production/work-orders/:id" element={<WorkOrderDetailPage />} />
+
+          {/* """ Shop Floor - Special Process """"""""""""""""""""""" */}
+          {/* Phase 1 - Chemical Control */}
+          <Route path="shopfloor/chemical-batches" element={<ChemicalBatchListPage />} />
+          <Route path="shopfloor/chemical-batches/:id" element={<ChemicalBatchDetailPage />} />
 
           {/* """ Quality """"""""""""""""""""""""""""""""""""""""""" */}
           {/* QMS Dashboard */}
