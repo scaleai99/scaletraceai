@@ -6,7 +6,7 @@ export function EdiPortalPage() {
   const [rows, setRows] = useState<EDIMessage[]>([])
   const [err, setErr] = useState('')
   const [f, setF] = useState({ direction: 'In', doc_type: 'PO', partner: '', reference: '', payload: '' })
-  const load = useCallback(() => { listEdi().then(setRows).catch(() => setRows([])) }, [])
+  const load = useCallback(() => { listEdi().then(r => setRows(Array.isArray(r) ? r : [])).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
   const add = async () => { setErr(''); try { await createEdi(f); setF({ direction: 'In', doc_type: 'PO', partner: '', reference: '', payload: '' }); load() } catch (e: any) { setErr(e?.response?.data?.detail || String(e)) } }
   const proc = async (id: string) => { await processEdi(id); load() }

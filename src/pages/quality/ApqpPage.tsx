@@ -10,7 +10,7 @@ export function ApqpPage() {
   const [err, setErr] = useState('')
   const [f, setF] = useState({ part_number: '', customer: '', ppap_level: 3 })
   const [open, setOpen] = useState<APQPPackage | null>(null)
-  const load = useCallback(() => { listApqp().then(setRows).catch(e => setErr(String(e))) }, [])
+  const load = useCallback(() => { listApqp().then(r => setRows(Array.isArray(r) ? r : [])).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
   const add = async () => { setErr(''); try { await createApqp(f); setF({ part_number: '', customer: '', ppap_level: 3 }); load() } catch (e: any) { setErr(e?.response?.data?.detail || String(e)) } }
   const save = async (p: APQPPackage) => { await updateApqp(p.id, { phase: p.phase, status: p.status, elements: p.elements }); setOpen(null); load() }

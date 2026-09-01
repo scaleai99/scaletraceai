@@ -36,7 +36,7 @@ export function QuotationFormPage() {
   const [activeStage, setActiveStage] = useState(6)
 
   useEffect(() => {
-    listCustomers({}).then(setCustomers).catch(() => setCustomers([]))
+    listCustomers({}).then(r => setCustomers(Array.isArray(r) ? r : [])).catch(() => setCustomers([]))
   }, [])
 
   const handleCreate = async () => {

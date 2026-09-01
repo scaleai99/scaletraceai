@@ -79,10 +79,11 @@ export function AuditTrailPage() {
 
   useEffect(() => {
     listAuditModules()
-      .then(setModules)
+      .then(r => setModules(Array.isArray(r) ? r : []))
       .catch((err: unknown) => {
         const axErr = err as { response?: { data?: { detail?: string } } }
         setModulesError(axErr?.response?.data?.detail ?? 'Failed to load module list')
+        setModules([])
       })
   }, [])
 
@@ -103,8 +104,8 @@ export function AuditTrailPage() {
     })
       .then((page) => {
         if (cancelled) return
-        setItems(page.items)
-        setTotal(page.total)
+        setItems(Array.isArray(page?.items) ? page.items : [])
+        setTotal(typeof page?.total === 'number' ? page.total : 0)
       })
       .catch((err: unknown) => {
         if (cancelled) return

@@ -73,7 +73,7 @@ export function RFQFormPage() {
   useEffect(() => {
     setCustomersLoading(true)
     listActiveCustomers()
-      .then(setCustomers)
+      .then(r => setCustomers(Array.isArray(r) ? r : []))
       .catch(() => setCustomers([]))
       .finally(() => setCustomersLoading(false))
   }, [])

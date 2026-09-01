@@ -272,7 +272,7 @@ export function NCRDetailPage() {
         setNcr(data)
         return listCAPAs({ ncr_id: id })
       })
-      .then(setCapas)
+      .then(r => setCapas(Array.isArray(r) ? r : []))
       .catch((err) => setError(err?.response?.data?.detail ?? 'Failed to load NCR'))
       .finally(() => setLoading(false))
   }, [id])

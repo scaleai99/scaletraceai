@@ -55,7 +55,7 @@ export function SpecificationMasterPage() {
       process_category: category || undefined,
       scale_qualified: qualifiedOnly || undefined,
     })
-      .then(setRows)
+      .then(r => setRows(Array.isArray(r) ? r : []))
       .catch((err: unknown) => {
         const ax = err as { response?: { data?: { detail?: string } } }
         setLoadError(ax?.response?.data?.detail ?? 'Failed to load specifications')

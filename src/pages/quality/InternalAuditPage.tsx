@@ -7,7 +7,7 @@ export function InternalAuditPage() {
   const [rows, setRows] = useState<InternalAudit[]>([])
   const [err, setErr] = useState('')
   const [f, setF] = useState({ audit_type: 'Process', area: '', auditor: '', planned_date: '' })
-  const load = useCallback(() => { listAudits().then(setRows).catch(e => setErr(String(e))) }, [])
+  const load = useCallback(() => { listAudits().then(r => setRows(Array.isArray(r) ? r : [])).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
   const add = async () => { setErr(''); try { await createAudit(f); setF({ audit_type: 'Process', area: '', auditor: '', planned_date: '' }); load() } catch (e: any) { setErr(e?.response?.data?.detail || String(e)) } }
   const setStatus = async (a: InternalAudit, status: string) => { await updateAudit(a.id, { status }); load() }

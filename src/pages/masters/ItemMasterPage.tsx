@@ -43,7 +43,7 @@ export function ItemMasterPage() {
   const ov = form.overview
 
   const loadItems = useCallback(() => {
-    listItems().then(setItems).catch(() => setItems([]))
+    listItems().then(r => setItems(Array.isArray(r) ? r : [])).catch(() => setItems([]))
   }, [])
   useEffect(() => { loadItems() }, [loadItems])
 

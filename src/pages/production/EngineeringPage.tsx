@@ -668,8 +668,8 @@ export function EngineeringPage() {
 
   useEffect(() => {
     listMachines()
-      .then(setMachines)
-      .catch(() => {}) // non-critical
+      .then(r => setMachines(Array.isArray(r) ? r : []))
+      .catch(() => setMachines([])) // non-critical
   }, [])
 
   const handleRowClick = (row: ERRow) => {

@@ -675,16 +675,16 @@ function EmployeeDetailPanel({ employee, onClose }: EmployeeDetailPanelProps) {
   const fetchCompetencies = () => {
     setLoadingComp(true)
     listCompetencies(employee.id)
-      .then(setCompetencies)
-      .catch(() => {/* silent */})
+      .then((res) => setCompetencies(Array.isArray(res) ? res : []))
+      .catch(() => setCompetencies([]))
       .finally(() => setLoadingComp(false))
   }
 
   const fetchTraining = () => {
     setLoadingTrain(true)
     listTraining(employee.id)
-      .then(setTrainingRecs)
-      .catch(() => {/* silent */})
+      .then((res) => setTrainingRecs(Array.isArray(res) ? res : []))
+      .catch(() => setTrainingRecs([]))
       .finally(() => setLoadingTrain(false))
   }
 
@@ -693,11 +693,12 @@ function EmployeeDetailPanel({ employee, onClose }: EmployeeDetailPanelProps) {
     // last 30 days filter "" backend should support this, we just list all
     listAttendance(employee.id)
       .then((recs) => {
+        const arr = Array.isArray(recs) ? recs : []
         const cutoff = new Date()
         cutoff.setDate(cutoff.getDate() - 30)
-        setAttendance(recs.filter((r) => new Date(r.attendance_date) >= cutoff))
+        setAttendance(arr.filter((r) => new Date(r.attendance_date) >= cutoff))
       })
-      .catch(() => {/* silent */})
+      .catch(() => setAttendance([]))
       .finally(() => setLoadingAtt(false))
   }
 

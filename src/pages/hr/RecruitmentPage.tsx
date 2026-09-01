@@ -11,8 +11,8 @@ export function RecruitmentPage() {
   const [rf, setRf] = useState({ title: '', department: '', positions: 1 })
   const [cf, setCf] = useState({ name: '', email: '', phone: '' })
   const [err, setErr] = useState('')
-  const loadReqs = useCallback(() => { listReqs().then(setReqs).catch(e => setErr(String(e))) }, [])
-  const loadCands = useCallback((rid: string) => { listCandidates(rid).then(setCands).catch(() => setCands([])) }, [])
+  const loadReqs = useCallback(() => { listReqs().then(r => setReqs(Array.isArray(r) ? r : [])).catch(() => setReqs([])) }, [])
+  const loadCands = useCallback((rid: string) => { listCandidates(rid).then(r => setCands(Array.isArray(r) ? r : [])).catch(() => setCands([])) }, [])
   useEffect(() => { loadReqs() }, [loadReqs])
   useEffect(() => { if (sel) loadCands(sel) }, [sel, loadCands])
   const addReq = async () => { setErr(''); try { await createReq(rf); setRf({ title: '', department: '', positions: 1 }); loadReqs() } catch (e: any) { setErr(e?.response?.data?.detail || String(e)) } }

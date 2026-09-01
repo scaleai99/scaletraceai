@@ -630,12 +630,12 @@ export function ItemDetailPage() {
     
     loadItem()
     if (!isNew && id) {
-      listItemDocuments(id).then(setDocuments).catch(() => setDocuments([]))
-      listItemDocumentHistory(id).then(setDocHistory).catch(() => setDocHistory([]))
-      listItemBom(id).then(setBomComponents).catch(() => setBomComponents([]))
-      listItemCustomerParts(id).then(setCustomerParts).catch(() => setCustomerParts([]))
+      listItemDocuments(id).then(r => setDocuments(Array.isArray(r) ? r : [])).catch(() => setDocuments([]))
+      listItemDocumentHistory(id).then(r => setDocHistory(Array.isArray(r) ? r : [])).catch(() => setDocHistory([]))
+      listItemBom(id).then(r => setBomComponents(Array.isArray(r) ? r : [])).catch(() => setBomComponents([]))
+      listItemCustomerParts(id).then(r => setCustomerParts(Array.isArray(r) ? r : [])).catch(() => setCustomerParts([]))
     }
-    listCustomers({}).then(setCustomersList).catch(() => setCustomersList([]))
+    listCustomers({}).then(r => setCustomersList(Array.isArray(r) ? r : [])).catch(() => setCustomersList([]))
   }, [id, isNew, resetForm])
 
   // ---------------------------------------------------------------------------
@@ -691,8 +691,8 @@ export function ItemDetailPage() {
   // ---------------------------------------------------------------------------
   const reloadDocuments = useCallback(() => {
     if (!id || id === 'new') return
-    listItemDocuments(id).then(setDocuments).catch(() => setDocuments([]))
-    listItemDocumentHistory(id).then(setDocHistory).catch(() => setDocHistory([]))
+    listItemDocuments(id).then(r => setDocuments(Array.isArray(r) ? r : [])).catch(() => setDocuments([]))
+    listItemDocumentHistory(id).then(r => setDocHistory(Array.isArray(r) ? r : [])).catch(() => setDocHistory([]))
   }, [id])
 
   const handleDocFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -773,7 +773,7 @@ export function ItemDetailPage() {
   }, [documents, docHistory, id, isNew, reloadDocuments])
 
   // ---- BOM component handlers ----
-  const reloadBom = () => { if (id && id !== 'new') listItemBom(id).then(setBomComponents).catch(() => setBomComponents([])) }
+  const reloadBom = () => { if (id && id !== 'new') listItemBom(id).then(r => setBomComponents(Array.isArray(r) ? r : [])).catch(() => setBomComponents([])) }
   const handleAddBom = async () => {
     if (isNew || !id) { setBomError('Save the item before adding components.'); return }
     if (!bomCode.trim() && !bomName.trim()) { setBomError('Enter a component code or name.'); return }
@@ -797,7 +797,7 @@ export function ItemDetailPage() {
   }
 
   // ---- Customer Part Map handlers ----
-  const reloadCpm = () => { if (id && id !== 'new') listItemCustomerParts(id).then(setCustomerParts).catch(() => setCustomerParts([])) }
+  const reloadCpm = () => { if (id && id !== 'new') listItemCustomerParts(id).then(r => setCustomerParts(Array.isArray(r) ? r : [])).catch(() => setCustomerParts([])) }
   const handleAddCpm = async () => {
     if (isNew || !id) { setCpmError('Save the item before adding mappings.'); return }
     if (!cpmPartNo.trim()) { setCpmError('Enter the customer part number.'); return }

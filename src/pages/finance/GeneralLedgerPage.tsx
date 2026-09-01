@@ -35,7 +35,7 @@ function Accounts() {
   const [rows, setRows] = useState<GLAccount[]>([])
   const [f, setF] = useState({ code: '', name: '', account_type: 'Asset', parent_code: '', is_active: true })
   const [err, setErr] = useState('')
-  const load = useCallback(() => { listAccounts().then(setRows).catch(e => setErr(String(e))) }, [])
+  const load = useCallback(() => { listAccounts().then(r => setRows(Array.isArray(r) ? r : [])).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
   const add = async () => {
     setErr('')
@@ -68,7 +68,7 @@ function Journals() {
   const [narration, setNarration] = useState('')
   const [lines, setLines] = useState<JournalLine[]>([{ account_code: '', debit: 0, credit: 0 }, { account_code: '', debit: 0, credit: 0 }])
   const [err, setErr] = useState('')
-  const load = useCallback(() => { listJournalEntries().then(setRows).catch(e => setErr(String(e))) }, [])
+  const load = useCallback(() => { listJournalEntries().then(r => setRows(Array.isArray(r) ? r : [])).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
   const totalD = lines.reduce((s, l) => s + Number(l.debit || 0), 0)
   const totalC = lines.reduce((s, l) => s + Number(l.credit || 0), 0)
