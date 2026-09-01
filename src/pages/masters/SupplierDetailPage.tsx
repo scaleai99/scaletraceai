@@ -682,8 +682,8 @@ export function SupplierDetailPage() {
         setSupplier(data)
         populateForm(data)
         loadContacts(id!, data)
-        listSupplierApprovedProducts(id!).then((ps) => setApprovedProducts(ps.map((x) => ({ id: x.id, material: x.material ?? '', specification: x.specification ?? '', form: x.form ?? '', condition: x.condition ?? '', approvedOn: x.approved_on ?? '', status: x.status ?? 'Approved' })))).catch(() => {})
-        listSupplierDocuments(id!).then((ds) => setSupplierDocs(ds.map(_mapSupplierDoc))).catch(() => {})
+        listSupplierApprovedProducts(id!).then((ps) => setApprovedProducts((Array.isArray(ps) ? ps : []).map((x) => ({ id: x.id, material: x.material ?? '', specification: x.specification ?? '', form: x.form ?? '', condition: x.condition ?? '', approvedOn: x.approved_on ?? '', status: x.status ?? 'Approved' })))).catch(() => {})
+        listSupplierDocuments(id!).then((ds) => setSupplierDocs((Array.isArray(ds) ? ds : []).map(_mapSupplierDoc))).catch(() => {})
         getScorecard(id!).then(setScorecard).catch(() => {})
       })
       .catch((err) => {
@@ -706,7 +706,7 @@ export function SupplierDetailPage() {
       if (!hasPending) { clearInterval(iv); return }
       ticks += 1
       if (ticks > 15) { clearInterval(iv); return }
-      listSupplierDocuments(id!).then((ds) => setSupplierDocs(ds.map(_mapSupplierDoc))).catch(() => {})
+      listSupplierDocuments(id!).then((ds) => setSupplierDocs((Array.isArray(ds) ? ds : []).map(_mapSupplierDoc))).catch(() => {})
     }, 4000)
     return () => clearInterval(iv)
     // eslint-disable-next-line react-hooks/exhaustive-deps

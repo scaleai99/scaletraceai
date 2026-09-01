@@ -1060,13 +1060,13 @@ export function CompanyMasterPage() {
             asResult(listCompanyAuditTrail(id)),
           ])
           if (!active) return
-          const found = companies.find((c) => c.id === id)
+          const found = (Array.isArray(companies) ? companies : []).find((c) => c.id === id)
           if (found) { setCompany(found); populateForm(found) }
-          setPlants(companyPlants)
-          if (docsResult.ok) { setCompanyDocs(docsResult.data); setDocsLoadError(null) } else { setCompanyDocs([]); setDocsLoadError('Failed to load documents') }
-          if (docNumResult.ok) { setDocNumberingConfigs(docNumResult.data); setDocNumberingLoadError(null) } else { setDocNumberingConfigs([]); setDocNumberingLoadError('Failed to load document numbering configuration') }
-          if (holsResult.ok) { setHolidays(holsResult.data); setHolidaysLoadError(null) } else { setHolidays([]); setHolidaysLoadError('Failed to load public holidays') }
-          if (auditResult.ok) { setAuditEntries(auditResult.data); setAuditError(null) } else { setAuditEntries([]); setAuditError('Failed to load audit trail') }
+          setPlants(Array.isArray(companyPlants) ? companyPlants : [])
+          if (docsResult.ok) { setCompanyDocs(Array.isArray(docsResult.data) ? docsResult.data : []); setDocsLoadError(null) } else { setCompanyDocs([]); setDocsLoadError('Failed to load documents') }
+          if (docNumResult.ok) { setDocNumberingConfigs(Array.isArray(docNumResult.data) ? docNumResult.data : []); setDocNumberingLoadError(null) } else { setDocNumberingConfigs([]); setDocNumberingLoadError('Failed to load document numbering configuration') }
+          if (holsResult.ok) { setHolidays(Array.isArray(holsResult.data) ? holsResult.data : []); setHolidaysLoadError(null) } else { setHolidays([]); setHolidaysLoadError('Failed to load public holidays') }
+          if (auditResult.ok) { setAuditEntries(Array.isArray(auditResult.data) ? auditResult.data : []); setAuditError(null) } else { setAuditEntries([]); setAuditError('Failed to load audit trail') }
         } else if (isNew && id === 'new') {
           // New company form — reset everything to blank defaults
           if (active) {
@@ -1108,7 +1108,7 @@ export function CompanyMasterPage() {
           // List view — load all companies, do NOT auto-navigate
           const companies = await getCompanies()
           if (!active) return
-          setCompaniesList(companies)
+          setCompaniesList(Array.isArray(companies) ? companies : [])
         }
       } catch (err: unknown) {
         const axErr = err as { response?: { data?: { detail?: string } } }
@@ -1133,7 +1133,7 @@ export function CompanyMasterPage() {
       if (!hasPending) { clearInterval(iv); return }
       ticks += 1
       if (ticks > 15) { clearInterval(iv); return }
-      listCompanyDocuments(id).then(setCompanyDocs).catch(() => { /* keep existing */ })
+      listCompanyDocuments(id).then(r => setCompanyDocs(Array.isArray(r) ? r : [])).catch(() => { /* keep existing */ })
     }, 4000)
     return () => clearInterval(iv)
     // eslint-disable-next-line react-hooks/exhaustive-deps

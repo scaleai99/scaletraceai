@@ -137,7 +137,7 @@ export function SupplierListPage() {
       asl_status: aslStatus || undefined,
       limit: 200,
     })
-      .then((result) => { if (!cancelled) setSuppliers(result) })
+      .then((result) => { if (!cancelled) setSuppliers(Array.isArray(result) ? result : []) })
       .catch(() => { if (!cancelled) setError('Failed to load suppliers.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
