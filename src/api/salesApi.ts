@@ -21,6 +21,7 @@ export interface DiffReportItem {
 }
 
 export interface CustomerPOLineItem {
+  item_id?: string | null
   id: string
   customer_po_id: string
   line_number: number
@@ -34,6 +35,7 @@ export interface CustomerPOLineItem {
 }
 
 export interface CustomerPO {
+  customer_name?: string | null
   id: string
   internal_ref: string
   po_number: string
@@ -80,6 +82,7 @@ export interface ConvertToSOResponse {
 // ---------------------------------------------------------------------------
 
 export interface SalesOrderLineItem {
+  item_id?: string | null
   id: string
   so_id: string
   line_number: number
@@ -95,6 +98,7 @@ export interface SalesOrderLineItem {
 }
 
 export interface SalesOrder {
+  customer_name?: string | null
   id: string
   so_number: string
   customer_po_id: string
@@ -119,7 +123,7 @@ export async function listCustomerPOs(params: {
   limit?: number
 } = {}): Promise<CustomerPO[]> {
   const { data } = await apiClient.get<CustomerPO[]>(CPO_BASE, { params })
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 export async function getCustomerPO(id: string): Promise<CustomerPO> {
@@ -128,7 +132,7 @@ export async function getCustomerPO(id: string): Promise<CustomerPO> {
 }
 
 export async function createCustomerPO(body: CustomerPOCreate): Promise<CustomerPO> {
-  const { data } = await apiClient.post<CustomerPO>(CPO_BASE, body)
+  const { data } = await apiClient.post<CustomerPO>(`${CPO_BASE}/`, body)
   return data
 }
 
@@ -177,7 +181,7 @@ export async function listSalesOrders(params: {
   limit?: number
 } = {}): Promise<SalesOrder[]> {
   const { data } = await apiClient.get<SalesOrder[]>(SO_BASE, { params })
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 export async function getSalesOrder(id: string): Promise<SalesOrder> {

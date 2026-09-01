@@ -15,6 +15,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Save } from 'lucide-react'
 import { Input, Select, Button } from '../../components/ui'
 import { createRFQ, listActiveCustomers, CustomerOption } from '../../api/rfqApi'
+import * as F from '../../components/flow/FlowUi'
 
 interface FormState {
   customer_id: string
@@ -42,6 +43,13 @@ function futureDateISO(days: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+const RFQ_FLOW_STAGES: F.FlowStageDef[] = [
+  { n: 1, title: 'RFQ Received', sub: 'Inbox & attachments', group: 'RFQ INTAKE' },
+  { n: 2, title: 'RFQ Registration', sub: 'Header, items, terms', group: 'RFQ INTAKE' },
+  { n: 3, title: 'AI Drawing & Spec Review', sub: '2D/3D extraction', group: 'ENGINEERING REVIEW' },
+  { n: 4, title: 'Technical & Config Review', sub: 'Manufacturability', group: 'ENGINEERING REVIEW' },
+]
+
 export function RFQFormPage() {
   const navigate = useNavigate()
 
@@ -51,6 +59,7 @@ export function RFQFormPage() {
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
   const [apiError, setApiError] = useState<string | null>(null)
   const [customerSearch, setCustomerSearch] = useState('')
+  const [activeStage, setActiveStage] = useState(2)
 
   const [form, setForm] = useState<FormState>({
     customer_id: '',
@@ -102,8 +111,8 @@ export function RFQFormPage() {
     return Object.keys(errs).length === 0
   }
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e?: FormEvent) => {
+    e?.preventDefault()
     if (!validate()) return
 
     setSubmitLoading(true)
@@ -134,130 +143,99 @@ export function RFQFormPage() {
   }
 
   return (
-    <div className="max-w-2xl">
-      {/* Back link + header */}
-      <div className="flex items-center gap-3 mb-6">
-        <button
-          type="button"
-          onClick={() => navigate('/sales/rfqs')}
-          className="text-gray-500 hover:text-gray-700 transition-colors p-1 rounded"
-          aria-label="Back to RFQs"
-        >
+    <div className="max-w-7xl space-y-5">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={() => navigate('/sales/rfqs')} className="text-gray-500 hover:text-gray-700 p-1 rounded" aria-label="Back to RFQs">
           <ArrowLeft size={20} />
         </button>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">New RFQ</h1>
-          <p className="text-sm text-gray-500">Module 04 - Create Request for Quotation</p>
+          <p className="text-sm text-gray-500">Module 04 · Register a Request for Quotation</p>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} noValidate>
-        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-          {/* Customer & Contact */}
-          <div className="p-6 space-y-4">
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-              Customer
-            </h2>
+      {/* Stage strip — same flow as the RFQ record */}
+      <F.StageStrip stages={RFQ_FLOW_STAGES} active={activeStage} done={new Set()} onSelect={setActiveStage} />
 
-            {/* Customer search filter */}
-            <Input
-              label="Search customers"
-              placeholder="Type to filter customer list..."
-              value={customerSearch}
-              onChange={(e) => setCustomerSearch(e.target.value)}
-              disabled={customersLoading}
-            />
+      {apiError && (
+        <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{apiError}</div>
+      )}
 
-            <Select
-              label="Customer"
-              required
-              options={[
-                { label: customersLoading ? 'Loading customers...' : 'Select a customer', value: '', disabled: true },
-                ...customerOptions,
-              ]}
-              value={form.customer_id}
-              onChange={set('customer_id')}
-              error={errors.customer_id}
-            />
+      <div className="rounded-2xl border border-gray-200 bg-gray-50/40 p-6">
+        {/* Stage 1 · RFQ Received */}
+        {activeStage === 1 && (
+          <>
+            <F.StageHeader n={1} group="RFQ INTAKE" title="RFQ Received"
+              desc="A new customer request is being entered manually. Capture the registration details in the next stage to create the RFQ."
+              meta={<><F.MetaChip label="Source" value="Manual" /><F.MetaChip label="Status" value="Not saved" tone="amber" /></>} />
+            <F.Card title="Intake">
+              <p className="text-sm text-gray-600">This RFQ hasn't been created yet. Continue to <span className="font-semibold">RFQ Registration</span> to enter the customer, due date and priority — saving there creates the RFQ and opens the full engineering flow.</p>
+              <F.Footer><button className={F.btnPrimary} onClick={() => setActiveStage(2)}>Continue to Registration →</button></F.Footer>
+            </F.Card>
+          </>
+        )}
 
-            <Input
-              label="Contact Name"
-              placeholder="e.g. Rajesh Kumar"
-              value={form.contact_name}
-              onChange={set('contact_name')}
-              maxLength={100}
-            />
-          </div>
-
-          {/* Dates & Priority */}
-          <div className="p-6 space-y-4">
-            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-              Schedule & Priority
-            </h2>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Received Date"
-                required
-                type="date"
-                value={form.received_date}
-                onChange={set('received_date')}
-                error={errors.received_date}
-              />
-              <Input
-                label="Quotation Due Date"
-                required
-                type="date"
-                value={form.quotation_due_date}
-                onChange={set('quotation_due_date')}
-                error={errors.quotation_due_date}
-              />
-            </div>
-
-            <div className="w-48">
-              <Select
-                label="Priority"
-                required
-                options={PRIORITY_OPTIONS}
-                value={form.priority}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    priority: e.target.value as 'High' | 'Medium' | 'Low',
-                  }))
-                }
-              />
-            </div>
-          </div>
-
-          {/* API error + Submit */}
-          <div className="p-6">
-            {apiError && (
-              <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-                {apiError}
+        {/* Stage 2 · RFQ Registration (editable create form) */}
+        {activeStage === 2 && (
+          <>
+            <F.StageHeader n={2} group="RFQ INTAKE" title="RFQ Registration"
+              desc="Capture the customer, schedule and priority. Saving creates the RFQ; line items and drawings are added on the next stages."
+              meta={<><F.MetaChip label="Mode" value="New RFQ" tone="indigo" /><F.MetaChip label="Status" value="Draft" /></>} />
+            <F.Card title="RFQ Header" right={<F.Badge text="New" tone="indigo" />}>
+              <div className="space-y-4">
+                <Input
+                  label="Search customers"
+                  placeholder="Type to filter customer list..."
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  disabled={customersLoading}
+                />
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <Select
+                    label="Customer"
+                    required
+                    options={[{ label: customersLoading ? 'Loading customers...' : 'Select a customer', value: '', disabled: true }, ...customerOptions]}
+                    value={form.customer_id}
+                    onChange={set('customer_id')}
+                    error={errors.customer_id}
+                  />
+                  <Input label="Contact Name" placeholder="e.g. Rajesh Kumar" value={form.contact_name} onChange={set('contact_name')} maxLength={100} />
+                  <Input label="Received Date" required type="date" value={form.received_date} onChange={set('received_date')} error={errors.received_date} />
+                  <Input label="Quotation Due Date" required type="date" value={form.quotation_due_date} onChange={set('quotation_due_date')} error={errors.quotation_due_date} />
+                  <Select
+                    label="Priority"
+                    required
+                    options={PRIORITY_OPTIONS}
+                    value={form.priority}
+                    onChange={(e) => setForm((prev) => ({ ...prev, priority: e.target.value as 'High' | 'Medium' | 'Low' }))}
+                  />
+                </div>
               </div>
-            )}
+              <F.Footer>
+                <button type="button" className={F.btnGhost} onClick={() => navigate('/sales/rfqs')}>Cancel</button>
+                <button type="button" className={F.btnPrimary} onClick={() => handleSubmit()} disabled={submitLoading}>
+                  {submitLoading ? 'Creating…' : 'Save & Register →'}
+                </button>
+              </F.Footer>
+            </F.Card>
+          </>
+        )}
 
-            <div className="flex items-center gap-3 justify-end">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => navigate('/sales/rfqs')}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="primary"
-                loading={submitLoading}
-                icon={<Save size={15} />}
-              >
-                Create RFQ
-              </Button>
-            </div>
-          </div>
-        </div>
-      </form>
+        {/* Stages 3 & 4 · locked until the RFQ exists */}
+        {(activeStage === 3 || activeStage === 4) && (
+          <>
+            <F.StageHeader n={activeStage} group="ENGINEERING REVIEW"
+              title={activeStage === 3 ? 'AI Drawing & Spec Review' : 'Technical & Configuration Review'}
+              desc={activeStage === 3 ? 'AI reads the 2D drawing and specification sheet and extracts part data.' : 'Engineer verifies AI output against shop-floor capability and certification requirements.'}
+              meta={<F.MetaChip label="Status" value="Locked" tone="amber" />} />
+            <F.PlaceholderNote>
+              Register the RFQ first (Stage 2 · Save &amp; Register). Drawing upload, AI extraction and the engineering review become available on the RFQ record the moment it's created.
+            </F.PlaceholderNote>
+            <F.Footer><button className={F.btnPrimary} onClick={() => setActiveStage(2)}>← Back to Registration</button></F.Footer>
+          </>
+        )}
+      </div>
     </div>
   )
 }

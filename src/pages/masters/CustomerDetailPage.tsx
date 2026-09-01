@@ -6,18 +6,19 @@
  *   - 10 tabs: General Information | Address | Contact Details | Business Details |
  *              Commercial | Quality Requirements | Banking Information |
  *              Documents | Notes & Attachments | History
- *   - General Information: 4-column SectionCard layout
- *   - Below 4 cols: Billing Address | Shipping Address | Banking Info |
- *                   Quality & Compliance | Customer Rating
+ *   - General Information: Basic Info + Registration only (each detail
+ *     area — address, contacts, business, commercial, quality, banking —
+ *     lives in its own dedicated tab; no duplicated boxes)
  *   - Linked Information section with 5 sub-tabs
  *   - Footer with audit info
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  Building2, Plus, Shield, BarChart2, Users, Link,
-  Info, Star, CheckCircle, XCircle, Trash2, ArrowLeft, ChevronDown,
+  Building2, Plus, Shield, BarChart2, Link,
+  Info, CheckCircle, XCircle, Trash2, ArrowLeft, ChevronDown,
+  FileText, Download, X, Pencil, Loader2, Sparkles,
 } from 'lucide-react'
 
 import {
@@ -36,9 +37,15 @@ import {
   approveCustomer,
   deactivateCustomer,
   deleteCustomer,
+  listCustomerDocuments,
+  deleteCustomerDocument,
+  createCustomerDocument,
+  uploadCustomerDocumentFile,
+  updateCustomerDocument,
   Customer,
   CustomerSite,
   CustomerDocument,
+  AiExtractedFields,
 } from '../../api/customerApi'
 
 // ---------------------------------------------------------------------------
@@ -55,6 +62,20 @@ type TabId =
   | 'documents'
   | 'notes'
   | 'history'
+
+const CUSTOMER_DOC_TYPES = ['Customer Quality Manual', 'NDA', 'Specification Files', 'Approved Drawing List', 'PO Copy', 'AS9100 Certificate', 'NADCAP Certificate', 'Other']
+const CUSTOMER_DOC_CATEGORIES = ['General', 'Certification']
+const CUSTOMER_DOC_STATUSES = ['Active', 'Valid', 'Expiring Soon', 'Expired', 'Pending']
+
+type DocFormState = {
+  document_type: string; category: string; doc_number: string; revision: string
+  issue_date: string; expiry_date: string; issuing_authority: string; status: string
+}
+const EMPTY_DOC_FORM: DocFormState = {
+  document_type: 'Customer Quality Manual', category: 'General', doc_number: '', revision: '',
+  issue_date: '', expiry_date: '', issuing_authority: '', status: 'Active',
+}
+interface PendingDoc { tempId: string; meta: DocFormState; file: File | null }
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'general', label: 'General Information' },
@@ -305,23 +326,6 @@ function FieldSelect({
   )
 }
 
-/** Star rating display */
-function StarRating({ value }: { value: number }) {
-  return (
-    <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map((n) => (
-        <span
-          key={n}
-          className={n <= Math.round(value) ? 'text-amber-400 text-sm' : 'text-gray-200 text-sm'}
-        >
-          ★
-        </span>
-      ))}
-      <span className="text-xs text-gray-600 ml-1">{value.toFixed(1)}</span>
-    </div>
-  )
-}
-
 /** Key Personnel contact row type */
 interface KeyContact {
   id?: string
@@ -342,6 +346,136 @@ export function CustomerDetailPage() {
   // Data state
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [documents, setDocuments] = useState<CustomerDocument[]>([])
+  const [notesText, setNotesText] = useState('')
+  const [showDocModal, setShowDocModal] = useState(false)
+  const [docUploading, setDocUploading] = useState(false)
+  const [docError, setDocError] = useState<string | null>(null)
+  const [editingDocId, setEditingDocId] = useState<string | null>(null)
+  const [docForm, setDocForm] = useState<DocFormState>({ ...EMPTY_DOC_FORM })
+  const [docFile, setDocFile] = useState<File | null>(null)
+  const [pendingDocs, setPendingDocs] = useState<PendingDoc[]>([])
+  const [notesAttaching, setNotesAttaching] = useState(false)
+  const [aiFields, setAiFields] = useState<AiExtractedFields | null>(null)
+
+  const loadDocuments = async () => {
+    if (!id || id === 'new') return
+    try { setDocuments(await listCustomerDocuments(id)) } catch { /* keep existing */ }
+  }
+
+  // Poll while any document's AI read is still running in the background
+  // (extraction_status === 'pending'). Self-terminates once nothing is
+  // pending or after ~1 minute, so a stuck/slow extraction doesn't poll
+  // forever. Uses a ref so the interval doesn't get torn down/recreated on
+  // every documents-state update.
+  const documentsRef = useRef(documents)
+  useEffect(() => { documentsRef.current = documents }, [documents])
+  useEffect(() => {
+    if (isNew) return
+    let ticks = 0
+    const iv = setInterval(() => {
+      const hasPending = documentsRef.current.some((d) => d.extraction_status === 'pending')
+      if (!hasPending) { clearInterval(iv); return }
+      ticks += 1
+      if (ticks > 15) { clearInterval(iv); return }
+      loadDocuments()
+    }, 4000)
+    return () => clearInterval(iv)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNew, id])
+
+  const openDocModal = (edit?: CustomerDocument) => {
+    setDocError(null); setDocFile(null)
+    setAiFields(edit?.extracted_fields ?? null)
+    if (edit) {
+      setEditingDocId(edit.id)
+      setDocForm({
+        document_type: edit.document_type ?? 'Customer Quality Manual',
+        category: edit.category ?? 'General',
+        doc_number: edit.doc_number ?? '',
+        revision: edit.revision ?? '',
+        issue_date: edit.issue_date ?? '',
+        expiry_date: edit.expiry_date ?? '',
+        issuing_authority: edit.issuing_authority ?? '',
+        status: edit.status ?? 'Active',
+      })
+    } else {
+      setEditingDocId(null); setDocForm({ ...EMPTY_DOC_FORM })
+    }
+    setShowDocModal(true)
+  }
+  const applyAiField = (field: keyof DocFormState, value: string | number | null | undefined) => {
+    if (value === null || value === undefined) return
+    setDocForm((prev) => ({ ...prev, [field]: String(value) }))
+  }
+  const docMetaPayload = (m: DocFormState) => ({
+    document_type: m.document_type,
+    category: m.category || undefined,
+    doc_number: m.doc_number.trim() || undefined,
+    revision: m.revision.trim() || undefined,
+    issue_date: m.issue_date || undefined,
+    expiry_date: m.expiry_date || undefined,
+    issuing_authority: m.issuing_authority.trim() || undefined,
+    status: m.status || undefined,
+  })
+  const handleSaveDoc = async () => {
+    if (!docForm.document_type.trim()) { setDocError('Document type is required.'); return }
+    setDocUploading(true); setDocError(null)
+    try {
+      if (editingDocId) {
+        await updateCustomerDocument(id!, editingDocId, docMetaPayload(docForm))
+        if (docFile) await uploadCustomerDocumentFile(id!, editingDocId, docFile)
+        await loadDocuments()
+      } else if (isNew) {
+        setPendingDocs((prev) => [...prev, { tempId: `tmp-${Date.now()}`, meta: { ...docForm }, file: docFile }])
+      } else {
+        const doc = await createCustomerDocument(id!, docMetaPayload(docForm))
+        if (docFile) await uploadCustomerDocumentFile(id!, doc.id, docFile)
+        await loadDocuments()
+      }
+      setShowDocModal(false); setDocFile(null); setDocForm({ ...EMPTY_DOC_FORM }); setEditingDocId(null); setAiFields(null)
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { detail?: string } } }
+      setDocError(ax?.response?.data?.detail ?? 'Save failed.')
+    } finally { setDocUploading(false) }
+  }
+  const handleDeleteDoc = async (docId: string) => {
+    if (!id || id === 'new') return
+    if (!window.confirm('Delete this document? The file will be removed.')) return
+    try { await deleteCustomerDocument(id, docId); await loadDocuments() }
+    catch (err: unknown) {
+      const ax = err as { response?: { data?: { detail?: string } } }
+      alert(ax?.response?.data?.detail ?? 'Delete failed.')
+    }
+  }
+  const removePendingDoc = (tempId: string) => setPendingDocs((prev) => prev.filter((d) => d.tempId !== tempId))
+  const flushPendingDocs = async (customerId: string) => {
+    for (const pd of pendingDocs) {
+      try {
+        const doc = await createCustomerDocument(customerId, docMetaPayload(pd.meta))
+        if (pd.file) await uploadCustomerDocumentFile(customerId, doc.id, pd.file)
+      } catch { /* skip a failed pending doc, continue with the rest */ }
+    }
+    setPendingDocs([])
+  }
+  // Notes-tab "Add" attaches a REAL file (one click). Type defaults to the file
+  // name; on a new/unsaved customer the file is buffered and uploaded on Save.
+  const handleAttachFromNotes = async (file: File) => {
+    const typeFromName = file.name.replace(/\.[^.]+$/, '') || 'Attachment'
+    if (isNew) {
+      setPendingDocs((prev) => [...prev, { tempId: `tmp-${Date.now()}`, meta: { ...EMPTY_DOC_FORM, document_type: typeFromName }, file }])
+      return
+    }
+    if (!id) return
+    setNotesAttaching(true)
+    try {
+      const doc = await createCustomerDocument(id, docMetaPayload({ ...EMPTY_DOC_FORM, document_type: typeFromName }))
+      await uploadCustomerDocumentFile(id, doc.id, file)
+      await loadDocuments()
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { detail?: string } } }
+      alert(ax?.response?.data?.detail ?? 'Attach failed.')
+    } finally { setNotesAttaching(false) }
+  }
   const [loading, setLoading] = useState(!isNew)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -422,13 +556,6 @@ export function CustomerDetailPage() {
   const [approvalDate, setApprovalDate] = useState('')
   const [approvalValidUpto, setApprovalValidUpto] = useState('')
 
-  // ---- Ratings ----
-  const [qualityRating, setQualityRating] = useState<number | null>(null)
-  const [deliveryRating, setDeliveryRating] = useState<number | null>(null)
-  const [serviceRating, setServiceRating] = useState<number | null>(null)
-  const [overallRating, setOverallRating] = useState<number | null>(null)
-  const [ratingDate, setRatingDate] = useState('')
-  const [ratingRemarks, setRatingRemarks] = useState('')
 
   // ---- Save state ----
   const [saving, setSaving] = useState(false)
@@ -498,14 +625,9 @@ export function CustomerDetailPage() {
     setApprovalDate(c.approval_date ?? '')
     setApprovalValidUpto(c.approval_valid_upto ?? '')
 
-    setQualityRating(c.quality_rating ?? null)
-    setDeliveryRating(c.delivery_rating ?? null)
-    setServiceRating(c.service_rating ?? null)
-    setOverallRating(c.overall_rating ?? null)
-    setRatingDate(c.rating_date ?? '')
-    setRatingRemarks(c.rating_remarks ?? '')
 
     setDocuments((c as unknown as { documents?: CustomerDocument[] }).documents ?? [])
+    setNotesText(c.notes ?? '')
   }, [])
 
   // ---------------------------------------------------------------------------
@@ -618,12 +740,7 @@ export function CustomerDetailPage() {
     customer_approval_number: approvalNumber.trim() || undefined,
     approval_date: approvalDate || undefined,
     approval_valid_upto: approvalValidUpto || undefined,
-    quality_rating: qualityRating ?? undefined,
-    delivery_rating: deliveryRating ?? undefined,
-    service_rating: serviceRating ?? undefined,
-    overall_rating: overallRating ?? undefined,
-    rating_date: ratingDate || undefined,
-    rating_remarks: ratingRemarks.trim() || undefined,
+    notes: notesText.trim() || undefined,
   })
 
 
@@ -643,9 +760,8 @@ export function CustomerDetailPage() {
     setBankIfscCode(''); setBankMicrCode(''); setBankUpiId('')
     setQaApprovalStatus(''); setAs9100Req('No'); setNadcapReq('No'); setFlowDownReq('No')
     setApprovalNumber(''); setApprovalDate(''); setApprovalValidUpto('')
-    setQualityRating(null); setDeliveryRating(null); setServiceRating(null); setOverallRating(null)
-    setRatingDate(''); setRatingRemarks('')
     setDocuments([])
+    setNotesText('')
     setLoading(false); setLoadError(null); setSaveError(null); setSaveSuccess(false); setActiveTab('general')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -722,6 +838,7 @@ export function CustomerDetailPage() {
           ...buildPayload(),
         })
         await persistContacts(created.id)
+        await flushPendingDocs(created.id)
         navigate(`/masters/customers/${created.id}`, { replace: true })
       } else {
         const updated = await updateCustomer(id!, buildPayload())
@@ -1067,7 +1184,7 @@ export function CustomerDetailPage() {
               )}
             </div>
             {/* 4-column grid */}
-            <div className="grid grid-cols-4 gap-3 items-start content-start">
+            <div className="grid grid-cols-2 gap-3 items-start content-start">
 
               {/* Column 1 "" Basic Information */}
               <SectionCard
@@ -1154,260 +1271,8 @@ export function CustomerDetailPage() {
                 </FieldRow>
               </SectionCard>
 
-              {/* Column 3 "" Business Information */}
-              <SectionCard
-                icon={<BarChart2 size={12} className="text-green-500" />}
-                title="Business Information"
-                color="bg-green-50"
-              >
-                <FieldRow label="Business Nature" required>
-                  <FieldSelect value={businessNature} onChange={setBusinessNature} options={BUSINESS_NATURE_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Service / Supply Type">
-                  <FieldSelect value={supplyType} onChange={setSupplyType} options={SUPPLY_TYPE_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Payment Terms" required>
-                  <FieldSelect value={paymentTermsText} onChange={setPaymentTermsText} options={PAYMENT_TERMS_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Incoterms">
-                  <FieldInput value={incoterms} onChange={(v) => setIncoterms(v.toUpperCase())} placeholder="DDP" maxLength={10} />
-                </FieldRow>
-                <FieldRow label="Min. Order Value (₹)">
-                  <FieldInput
-                    value={minOrderValue}
-                    onChange={setMinOrderValue}
-                    type="number"
-                    placeholder="50000.00"
-                  />
-                </FieldRow>
-                <FieldRow label="Annual Turnover (₹)">
-                  <FieldInput
-                    value={annualTurnover}
-                    onChange={setAnnualTurnover}
-                    type="number"
-                    placeholder="2500000000.00"
-                  />
-                </FieldRow>
-                <FieldRow label="Preferred Currency">
-                  <FieldSelect value={preferredCurrency} onChange={setPreferredCurrency} options={CURRENCY_OPTIONS} />
-                </FieldRow>
-              </SectionCard>
-
-              {/* Column 4 "" Key Personnel */}
-              <SectionCard
-                icon={<Users size={12} className="text-orange-500" />}
-                title="Key Personnel (Customer)"
-                color="bg-orange-50"
-              >
-                <div className="px-3 py-2">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-gray-100">
-                        <th className="text-left py-1 text-gray-500 font-medium">Name</th>
-                        <th className="text-left py-1 text-gray-500 font-medium">Designation</th>
-                        <th className="text-left py-1 text-gray-500 font-medium">Email</th>
-                        <th className="text-left py-1 text-gray-500 font-medium">Phone</th>
-                        <th className="text-left py-1 text-gray-500 font-medium">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {contacts.map((c, i) => (
-                        <tr key={i} className="border-b border-gray-50">
-                          <td className="py-1 pr-1">
-                            <input
-                              value={c.name}
-                              onChange={(e) => updateContact(i, 'name', e.target.value)}
-                              className="w-full text-xs border-0 border-b border-gray-100 focus:border-[#005c87] focus:outline-none bg-transparent py-0.5"
-                              placeholder="Name"
-                            />
-                          </td>
-                          <td className="py-1 pr-1">
-                            <input
-                              value={c.designation}
-                              onChange={(e) => updateContact(i, 'designation', e.target.value)}
-                              className="w-full text-xs border-0 border-b border-gray-100 focus:border-[#005c87] focus:outline-none bg-transparent py-0.5 text-gray-500"
-                              placeholder="Designation"
-                            />
-                          </td>
-                          <td className="py-1 pr-1">
-                            <input
-                              value={c.email}
-                              onChange={(e) => updateContact(i, 'email', e.target.value)}
-                              className="w-full text-xs border-0 border-b border-gray-100 focus:border-[#005c87] focus:outline-none bg-transparent py-0.5 text-blue-600"
-                              placeholder="email@co.com"
-                            />
-                          </td>
-                          <td className="py-1">
-                            <input
-                              value={c.phone}
-                              onChange={(e) => updateContact(i, 'phone', e.target.value)}
-                              className="w-full text-xs border-0 border-b border-gray-100 focus:border-[#005c87] focus:outline-none bg-transparent py-0.5"
-                              placeholder="+91 ..."
-                            />
-                          </td>
-                          <td className="py-1 text-right">
-                            <button type="button" title="Delete" onClick={() => removeContact(i)}><Trash2 size={12} className="text-gray-300 hover:text-red-500" /></button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <button
-                    onClick={addContact}
-                    className="mt-2 text-xs text-[#005c87] flex items-center gap-1 hover:text-[#004a6e]"
-                  >
-                    <Plus size={11} /> Add Contact
-                  </button>
-                </div>
-              </SectionCard>
             </div>
 
-            {/* ---- Second row: Addresses + Quality & Rating (4 equal columns) ---- */}
-            <div className="grid grid-cols-4 gap-3 items-start content-start">
-  
-              {/* Column 1 - Billing Address */}
-              <SectionCard
-                icon={<Building2 size={12} className="text-blue-500" />}
-                title="Billing Address"
-                color="bg-blue-50"
-              >
-                <FieldRow label="Address Line 1" required>
-                  <FieldInput value={billAddr1} onChange={setBillAddr1} placeholder="Street / Building" />
-                </FieldRow>
-                <FieldRow label="Address Line 2">
-                  <FieldInput value={billAddr2} onChange={setBillAddr2} placeholder="Area / Locality" />
-                </FieldRow>
-                <FieldRow label="City" required>
-                  <FieldInput value={billCity} onChange={setBillCity} placeholder="City" />
-                </FieldRow>
-                <FieldRow label="State" required>
-                  <FieldSelect value={billState} onChange={setBillState} options={INDIAN_STATES} />
-                </FieldRow>
-                <FieldRow label="Country" required>
-                  <FieldSelect value={billCountry} onChange={setBillCountry} options={COUNTRY_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="PIN Code" required>
-                  <FieldInput value={billPin} onChange={setBillPin} placeholder="560001" maxLength={10} />
-                </FieldRow>
-              </SectionCard>
-
-              {/* Column 2 - Shipping Address */}
-              <SectionCard
-                icon={<Building2 size={12} className="text-teal-500" />}
-                title="Shipping Address"
-                color="bg-teal-50"
-              >
-                <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-50">
-                  <input
-                    id="shipSame"
-                    type="checkbox"
-                    checked={shipSameAsBill}
-                    onChange={(e) => setShipSameAsBill(e.target.checked)}
-                    className="rounded accent-[#005c87]"
-                  />
-                  <label htmlFor="shipSame" className="text-[11px] text-gray-500 cursor-pointer">
-                    Same as Billing Address
-                  </label>
-                </div>
-                <FieldRow label="Address Line 1" required>
-                  <FieldInput value={shipAddr1} onChange={setShipAddr1} placeholder="Street / Building" disabled={shipSameAsBill} />
-                </FieldRow>
-                <FieldRow label="Address Line 2">
-                  <FieldInput value={shipAddr2} onChange={setShipAddr2} placeholder="Area / Locality" disabled={shipSameAsBill} />
-                </FieldRow>
-                <FieldRow label="City" required>
-                  <FieldInput value={shipCity} onChange={setShipCity} placeholder="City" disabled={shipSameAsBill} />
-                </FieldRow>
-                <FieldRow label="State" required>
-                  <FieldSelect value={shipState} onChange={setShipState} options={INDIAN_STATES} />
-                </FieldRow>
-                <FieldRow label="Country" required>
-                  <FieldSelect value={shipCountry} onChange={setShipCountry} options={COUNTRY_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="PIN Code" required>
-                  <FieldInput value={shipPin} onChange={setShipPin} placeholder="560001" maxLength={10} disabled={shipSameAsBill} />
-                </FieldRow>
-              </SectionCard>
-
-              {/* Column 3 - Quality & Compliance */}
-              <SectionCard
-                icon={<Shield size={12} className="text-amber-500" />}
-                title="Quality & Compliance"
-                color="bg-amber-50"
-              >
-                <FieldRow label="QA Approval Status">
-                  <FieldSelect value={qaApprovalStatus} onChange={setQaApprovalStatus} options={QA_APPROVAL_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="AS9100 Requirement">
-                  <FieldSelect value={as9100Req} onChange={setAs9100Req} options={YES_NO_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="NADCAP Requirement">
-                  <FieldSelect value={nadcapReq} onChange={setNadcapReq} options={YES_NO_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Flow Down Required">
-                  <FieldSelect value={flowDownReq} onChange={setFlowDownReq} options={YES_NO_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Customer Approval No.">
-                  <FieldInput value={approvalNumber} onChange={setApprovalNumber} placeholder="AU/N/APP/2021/458" />
-                </FieldRow>
-                <FieldRow label="Approval Date">
-                  <FieldInput value={approvalDate} onChange={setApprovalDate} type="date" />
-                </FieldRow>
-                <FieldRow label="Valid Up To">
-                  <FieldInput value={approvalValidUpto} onChange={setApprovalValidUpto} type="date" />
-                </FieldRow>
-              </SectionCard>
-
-              {/* Column 4 - Customer Rating */}
-              <SectionCard
-                icon={<Star size={12} className="text-yellow-500" />}
-                title="Customer Rating"
-                color="bg-yellow-50"
-              >
-                <div className="px-3 py-2 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-gray-500 w-24">Quality Rating</span>
-                    {qualityRating != null ? (
-                      <StarRating value={qualityRating} />
-                    ) : (
-                      <input type="number" min={0} max={5} step={0.1} value={qualityRating ?? ''} onChange={(e) => setQualityRating(e.target.value ? parseFloat(e.target.value) : null)} className="w-14 text-xs border border-gray-200 rounded px-1 py-0.5" placeholder="0-5" />
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-gray-500 w-24">Delivery Rating</span>
-                    {deliveryRating != null ? (
-                      <StarRating value={deliveryRating} />
-                    ) : (
-                      <input type="number" min={0} max={5} step={0.1} value={deliveryRating ?? ''} onChange={(e) => setDeliveryRating(e.target.value ? parseFloat(e.target.value) : null)} className="w-14 text-xs border border-gray-200 rounded px-1 py-0.5" placeholder="0-5" />
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-gray-500 w-24">Service Rating</span>
-                    {serviceRating != null ? (
-                      <StarRating value={serviceRating} />
-                    ) : (
-                      <input type="number" min={0} max={5} step={0.1} value={serviceRating ?? ''} onChange={(e) => setServiceRating(e.target.value ? parseFloat(e.target.value) : null)} className="w-14 text-xs border border-gray-200 rounded px-1 py-0.5" placeholder="0-5" />
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between border-t border-gray-100 pt-2">
-                    <span className="text-[11px] text-gray-600 font-medium w-24">Overall Rating</span>
-                    {overallRating != null ? (
-                      <StarRating value={overallRating} />
-                    ) : (
-                      <input type="number" min={0} max={5} step={0.1} value={overallRating ?? ''} onChange={(e) => setOverallRating(e.target.value ? parseFloat(e.target.value) : null)} className="w-14 text-xs border border-gray-200 rounded px-1 py-0.5" placeholder="0-5" />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[11px] text-gray-500 w-24">Rating Date</span>
-                    <input type="date" value={ratingDate} onChange={(e) => setRatingDate(e.target.value)} className="flex-1 text-xs border-0 border-b border-gray-100 focus:border-[#005c87] focus:outline-none bg-transparent py-0.5" />
-                  </div>
-                  <div className="mt-1">
-                    <span className="text-[11px] text-gray-500">Rating Remarks</span>
-                    <textarea value={ratingRemarks} onChange={(e) => setRatingRemarks(e.target.value)} rows={2} placeholder="Remarks..." className="w-full mt-1 text-xs border border-gray-100 rounded px-2 py-1 focus:border-[#005c87] focus:outline-none resize-none" />
-                  </div>
-                </div>
-              </SectionCard>
-            </div>
 
             {/* ---- Linked Information ---- */}
             <div 
@@ -1582,13 +1447,16 @@ export function CustomerDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {contacts.length === 0 && (
+                    <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">No contacts yet. Click "Add Contact" to add one.</td></tr>
+                  )}
                   {contacts.map((c, i) => (
                     <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="px-3 py-2 text-gray-400">{i + 1}</td>
-                      <td className="px-3 py-2">{c.name || <span className="text-gray-300">""</span>}</td>
-                      <td className="px-3 py-2 text-gray-500">{c.designation || <span className="text-gray-300">""</span>}</td>
-                      <td className="px-3 py-2 text-blue-600">{c.email || <span className="text-gray-300">""</span>}</td>
-                      <td className="px-3 py-2">{c.phone || <span className="text-gray-300">""</span>}</td>
+                      <td className="px-2 py-1"><input value={c.name} onChange={(e) => updateContact(i, 'name', e.target.value)} placeholder="Name" className="w-full text-xs border-0 border-b border-gray-100 focus:border-[#005c87] focus:outline-none bg-transparent py-0.5" /></td>
+                      <td className="px-2 py-1"><input value={c.designation} onChange={(e) => updateContact(i, 'designation', e.target.value)} placeholder="Designation" className="w-full text-xs border-0 border-b border-gray-100 focus:border-[#005c87] focus:outline-none bg-transparent py-0.5 text-gray-500" /></td>
+                      <td className="px-2 py-1"><input value={c.email} onChange={(e) => updateContact(i, 'email', e.target.value)} placeholder="email@co.com" className="w-full text-xs border-0 border-b border-gray-100 focus:border-[#005c87] focus:outline-none bg-transparent py-0.5 text-blue-600" /></td>
+                      <td className="px-2 py-1"><input value={c.phone} onChange={(e) => updateContact(i, 'phone', e.target.value)} placeholder="+91 ..." className="w-full text-xs border-0 border-b border-gray-100 focus:border-[#005c87] focus:outline-none bg-transparent py-0.5" /></td>
                       <td className="px-3 py-2 text-right"><button type="button" title="Delete" onClick={() => removeContact(i)}><Trash2 size={12} className="text-gray-300 hover:text-red-500" /></button></td>
                     </tr>
                   ))}
@@ -1652,111 +1520,63 @@ export function CustomerDetailPage() {
 
         {/* ---- COMMERCIAL TAB --------------------------------------- */}
         {activeTab === 'commercial' && (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="w-full">
             <SectionCard
               icon={<BarChart2 size={12} className="text-blue-500" />}
               title="Commercial Terms"
               color="bg-blue-50"
             >
-              <FieldRow label="Payment Terms" required>
-                <FieldSelect value={paymentTermsText} onChange={setPaymentTermsText} options={PAYMENT_TERMS_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="Incoterms">
-                <FieldInput value={incoterms} onChange={(v) => setIncoterms(v.toUpperCase())} placeholder="DDP" maxLength={10} />
-              </FieldRow>
-              <FieldRow label="Min. Order Value (₹)">
-                <FieldInput value={minOrderValue} onChange={setMinOrderValue} type="number" placeholder="50000.00" />
-              </FieldRow>
-              <FieldRow label="Annual Turnover (₹)">
-                <FieldInput value={annualTurnover} onChange={setAnnualTurnover} type="number" placeholder="2500000000.00" />
-              </FieldRow>
-              <FieldRow label="Preferred Currency">
-                <FieldSelect value={preferredCurrency} onChange={setPreferredCurrency} options={CURRENCY_OPTIONS} />
-              </FieldRow>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
+                <FieldRow label="Payment Terms" required>
+                  <FieldSelect value={paymentTermsText} onChange={setPaymentTermsText} options={PAYMENT_TERMS_OPTIONS} />
+                </FieldRow>
+                <FieldRow label="Incoterms">
+                  <FieldInput value={incoterms} onChange={(v) => setIncoterms(v.toUpperCase())} placeholder="DDP" maxLength={10} />
+                </FieldRow>
+                <FieldRow label="Min. Order Value (₹)">
+                  <FieldInput value={minOrderValue} onChange={setMinOrderValue} type="number" placeholder="50000.00" />
+                </FieldRow>
+                <FieldRow label="Annual Turnover (₹)">
+                  <FieldInput value={annualTurnover} onChange={setAnnualTurnover} type="number" placeholder="2500000000.00" />
+                </FieldRow>
+                <FieldRow label="Preferred Currency">
+                  <FieldSelect value={preferredCurrency} onChange={setPreferredCurrency} options={CURRENCY_OPTIONS} />
+                </FieldRow>
+              </div>
             </SectionCard>
           </div>
         )}
 
         {/* ---- QUALITY REQUIREMENTS TAB ----------------------------- */}
         {activeTab === 'quality' && (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="w-full">
             <SectionCard
               icon={<Shield size={12} className="text-amber-500" />}
               title="Quality & Compliance"
               color="bg-amber-50"
             >
-              <FieldRow label="QA Approval Status">
-                <FieldSelect value={qaApprovalStatus} onChange={setQaApprovalStatus} options={QA_APPROVAL_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="AS9100 Requirement">
-                <FieldSelect value={as9100Req} onChange={setAs9100Req} options={YES_NO_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="NADCAP Requirement">
-                <FieldSelect value={nadcapReq} onChange={setNadcapReq} options={YES_NO_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="Flow Down Required">
-                <FieldSelect value={flowDownReq} onChange={setFlowDownReq} options={YES_NO_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="Customer Approval No.">
-                <FieldInput value={approvalNumber} onChange={setApprovalNumber} placeholder="AU/N/APP/2021/458" />
-              </FieldRow>
-              <FieldRow label="Approval Date">
-                <FieldInput value={approvalDate} onChange={setApprovalDate} type="date" />
-              </FieldRow>
-              <FieldRow label="Valid Up To">
-                <FieldInput value={approvalValidUpto} onChange={setApprovalValidUpto} type="date" />
-              </FieldRow>
-            </SectionCard>
-
-            <SectionCard
-              icon={<Star size={12} className="text-yellow-500" />}
-              title="Customer Rating"
-              color="bg-yellow-50"
-            >
-              <div className="px-3 py-3 space-y-3">
-                {([
-                  ['Quality Rating', qualityRating, setQualityRating],
-                  ['Delivery Rating', deliveryRating, setDeliveryRating],
-                  ['Service Rating', serviceRating, setServiceRating],
-                  ['Overall Rating', overallRating, setOverallRating],
-                ] as [string, number | null, (v: number | null) => void][]).map(([label, val, setter]) => (
-                  <div key={label} className="flex items-center gap-3">
-                    <span className="text-[11px] text-gray-500 w-28">{label}</span>
-                    {val != null ? (
-                      <StarRating value={val} />
-                    ) : (
-                      <input
-                        type="number"
-                        min={0}
-                        max={5}
-                        step={0.1}
-                        value={val ?? ''}
-                        onChange={(e) => setter(e.target.value ? parseFloat(e.target.value) : null)}
-                        className="w-16 text-xs border border-gray-200 rounded px-1.5 py-0.5"
-                        placeholder="0-5"
-                      />
-                    )}
-                  </div>
-                ))}
-                <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
-                  <span className="text-[11px] text-gray-500 w-28">Rating Date</span>
-                  <input
-                    type="date"
-                    value={ratingDate}
-                    onChange={(e) => setRatingDate(e.target.value)}
-                    className="text-xs border border-gray-200 rounded px-1.5 py-0.5"
-                  />
-                </div>
-                <div>
-                  <span className="text-[11px] text-gray-500">Rating Remarks</span>
-                  <textarea
-                    value={ratingRemarks}
-                    onChange={(e) => setRatingRemarks(e.target.value)}
-                    rows={3}
-                    className="w-full mt-1 text-xs border border-gray-200 rounded px-2 py-1.5 resize-none focus:border-[#005c87] focus:outline-none"
-                    placeholder="Good customer: Regular business. On-time payments."
-                  />
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
+                <FieldRow label="QA Approval Status">
+                  <FieldSelect value={qaApprovalStatus} onChange={setQaApprovalStatus} options={QA_APPROVAL_OPTIONS} />
+                </FieldRow>
+                <FieldRow label="AS9100 Requirement">
+                  <FieldSelect value={as9100Req} onChange={setAs9100Req} options={YES_NO_OPTIONS} />
+                </FieldRow>
+                <FieldRow label="NADCAP Requirement">
+                  <FieldSelect value={nadcapReq} onChange={setNadcapReq} options={YES_NO_OPTIONS} />
+                </FieldRow>
+                <FieldRow label="Flow Down Required">
+                  <FieldSelect value={flowDownReq} onChange={setFlowDownReq} options={YES_NO_OPTIONS} />
+                </FieldRow>
+                <FieldRow label="Customer Approval No.">
+                  <FieldInput value={approvalNumber} onChange={setApprovalNumber} placeholder="AU/N/APP/2021/458" />
+                </FieldRow>
+                <FieldRow label="Approval Date">
+                  <FieldInput value={approvalDate} onChange={setApprovalDate} type="date" />
+                </FieldRow>
+                <FieldRow label="Valid Up To">
+                  <FieldInput value={approvalValidUpto} onChange={setApprovalValidUpto} type="date" />
+                </FieldRow>
               </div>
             </SectionCard>
           </div>
@@ -1764,33 +1584,35 @@ export function CustomerDetailPage() {
 
         {/* ---- BANKING INFORMATION TAB ------------------------------ */}
         {activeTab === 'banking' && (
-          <div className="max-w-lg">
+          <div className="w-full">
             <SectionCard
               icon={<Shield size={12} className="text-indigo-500" />}
               title="Banking Information"
               color="bg-indigo-50"
             >
-              <FieldRow label="Bank Name" required>
-                <FieldInput value={bankName} onChange={setBankName} placeholder="HDFC Bank Ltd" />
-              </FieldRow>
-              <FieldRow label="Branch" required>
-                <FieldInput value={bankBranch} onChange={setBankBranch} placeholder="Devanahalli" />
-              </FieldRow>
-              <FieldRow label="Account No." required>
-                <FieldInput value={bankAccountNumber} onChange={setBankAccountNumber} placeholder="56200017345678" maxLength={30} />
-              </FieldRow>
-              <FieldRow label="Account Type" required>
-                <FieldSelect value={bankAccountType} onChange={setBankAccountType} options={BANK_ACCOUNT_TYPE_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="IFSC Code" required>
-                <FieldInput value={bankIfscCode} onChange={(v) => setBankIfscCode(v.toUpperCase())} placeholder="HDFC0C31324" maxLength={11} />
-              </FieldRow>
-              <FieldRow label="MICR Code">
-                <FieldInput value={bankMicrCode} onChange={setBankMicrCode} placeholder="560240002" maxLength={9} />
-              </FieldRow>
-              <FieldRow label="UPI ID">
-                <FieldInput value={bankUpiId} onChange={setBankUpiId} placeholder="customer@bank" maxLength={50} />
-              </FieldRow>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
+                <FieldRow label="Bank Name" required>
+                  <FieldInput value={bankName} onChange={setBankName} placeholder="HDFC Bank Ltd" />
+                </FieldRow>
+                <FieldRow label="Branch" required>
+                  <FieldInput value={bankBranch} onChange={setBankBranch} placeholder="Devanahalli" />
+                </FieldRow>
+                <FieldRow label="Account No." required>
+                  <FieldInput value={bankAccountNumber} onChange={setBankAccountNumber} placeholder="56200017345678" maxLength={30} />
+                </FieldRow>
+                <FieldRow label="Account Type" required>
+                  <FieldSelect value={bankAccountType} onChange={setBankAccountType} options={BANK_ACCOUNT_TYPE_OPTIONS} />
+                </FieldRow>
+                <FieldRow label="IFSC Code" required>
+                  <FieldInput value={bankIfscCode} onChange={(v) => setBankIfscCode(v.toUpperCase())} placeholder="HDFC0C31324" maxLength={11} />
+                </FieldRow>
+                <FieldRow label="MICR Code">
+                  <FieldInput value={bankMicrCode} onChange={setBankMicrCode} placeholder="560240002" maxLength={9} />
+                </FieldRow>
+                <FieldRow label="UPI ID">
+                  <FieldInput value={bankUpiId} onChange={setBankUpiId} placeholder="customer@bank" maxLength={50} />
+                </FieldRow>
+              </div>
             </SectionCard>
           </div>
         )}
@@ -1799,49 +1621,277 @@ export function CustomerDetailPage() {
         {activeTab === 'documents' && (
           <div className="bg-white rounded-lg border border-gray-200" style={{alignSelf:"start", height:"fit-content"}}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-              <h3 className="text-xs font-semibold text-gray-700">Documents</h3>
-              <button className="inline-flex items-center gap-1 text-xs text-[#005c87] hover:text-[#004a6e]">
+              <h3 className="text-xs font-semibold text-gray-700 flex items-center gap-1.5"><FileText size={13} className="text-[#005c87]" /> Documents &amp; Certifications</h3>
+              <button onClick={() => openDocModal()} className="inline-flex items-center gap-1 text-xs text-[#005c87] hover:text-[#004a6e]">
                 <Plus size={12} /> Upload Document
               </button>
             </div>
-            {documents.length === 0 ? (
-              <div className="px-4 py-8 text-center text-xs text-gray-400">
-                No documents uploaded yet.
-              </div>
+
+            {(documents.length === 0 && pendingDocs.length === 0) ? (
+              <div className="px-4 py-8 text-center text-xs text-gray-400">No documents yet. Click &quot;Upload Document&quot; or drag a file below.</div>
             ) : (
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">Document Type</th>
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">File Name</th>
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">Uploaded On</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {documents.map((doc) => (
-                    <tr key={doc.id} className="border-b border-gray-50 hover:bg-gray-50">
-                      <td className="px-3 py-2">{doc.document_type}</td>
-                      <td className="px-3 py-2 text-blue-600">{doc.file_name}</td>
-                      <td className="px-3 py-2">{doc.uploaded_at ? formatDate(doc.uploaded_at) : '""'}</td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">Type</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">Category</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">Doc No.</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">Rev.</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">Issue</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">Expiry</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">Status</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">File</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">AI Read</th>
+                      <th className="px-3 py-2 text-right text-gray-500 font-medium">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {documents.map((doc) => (
+                      <tr key={doc.id} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="px-3 py-2">{doc.document_type}</td>
+                        <td className="px-3 py-2 text-gray-500">{doc.category || '-'}</td>
+                        <td className="px-3 py-2 text-gray-500">{doc.doc_number || '-'}</td>
+                        <td className="px-3 py-2 text-gray-500">{doc.revision || '-'}</td>
+                        <td className="px-3 py-2 text-gray-500">{doc.issue_date || '-'}</td>
+                        <td className="px-3 py-2 text-gray-500">{doc.expiry_date || '-'}</td>
+                        <td className="px-3 py-2">{doc.status || '-'}</td>
+                        <td className="px-3 py-2 text-blue-600">{doc.file_name || <span className="text-gray-300">no file</span>}</td>
+                        <td className="px-3 py-2">
+                          {doc.extraction_status === 'pending' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-amber-600"><Loader2 size={11} className="animate-spin" /> Reading…</span>
+                          )}
+                          {(doc.extraction_status === 'success' || doc.extraction_status === 'partial') && (
+                            <button type="button" onClick={() => openDocModal(doc)} className="inline-flex items-center gap-1 text-[10px] text-[#005c87] hover:underline">
+                              <Sparkles size={11} /> Review AI fields
+                            </button>
+                          )}
+                          {doc.extraction_status === 'failed' && <span className="text-[10px] text-red-500">AI read failed</span>}
+                          {(doc.extraction_status === 'unsupported_file_type' || !doc.extraction_status) && <span className="text-[10px] text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button type="button" title="Edit" onClick={() => openDocModal(doc)}><Pencil size={13} className="text-gray-400 hover:text-[#005c87]" /></button>
+                            {doc.file_path && <a href={`/${doc.file_path}`} target="_blank" rel="noreferrer" title="Download" className="text-gray-500 hover:text-[#005c87]"><Download size={13} /></a>}
+                            <button type="button" title="Delete" onClick={() => handleDeleteDoc(doc.id)}><Trash2 size={13} className="text-gray-300 hover:text-red-500" /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {pendingDocs.map((pd) => (
+                      <tr key={pd.tempId} className="border-b border-gray-50 bg-amber-50/40">
+                        <td className="px-3 py-2">{pd.meta.document_type}</td>
+                        <td className="px-3 py-2 text-gray-500">{pd.meta.category || '-'}</td>
+                        <td className="px-3 py-2 text-gray-500">{pd.meta.doc_number || '-'}</td>
+                        <td className="px-3 py-2 text-gray-500">{pd.meta.revision || '-'}</td>
+                        <td className="px-3 py-2 text-gray-500">{pd.meta.issue_date || '-'}</td>
+                        <td className="px-3 py-2 text-gray-500">{pd.meta.expiry_date || '-'}</td>
+                        <td className="px-3 py-2"><span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">Pending save</span></td>
+                        <td className="px-3 py-2 text-gray-500">{pd.file ? pd.file.name : <span className="text-gray-300">no file</span>}</td>
+                        <td className="px-3 py-2 text-[10px] text-gray-300" title="AI reading starts after the customer is saved">—</td>
+                        <td className="px-3 py-2 text-right">
+                          <button type="button" title="Remove" onClick={() => removePendingDoc(pd.tempId)}><Trash2 size={13} className="text-gray-300 hover:text-red-500" /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) { setDocFile(f); openDocModal() } }}
+              className="m-4 border-2 border-dashed border-gray-200 rounded-lg px-4 py-6 text-center text-xs text-gray-400 hover:border-[#005c87]/40"
+            >
+              Drag &amp; drop a file here to attach it (PDF / DOCX / XLSX)
+              {isNew && <div className="mt-1 text-[11px] text-amber-600">Documents added now are saved when you save the customer.</div>}
+            </div>
+
+            {showDocModal && (
+              <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4" onClick={() => { setShowDocModal(false); setAiFields(null) }}>
+                <div className="bg-white rounded-lg shadow-xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                    <h3 className="text-sm font-semibold text-gray-800">{editingDocId ? 'Edit Document' : 'Add Document'}</h3>
+                    <button onClick={() => { setShowDocModal(false); setAiFields(null) }} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+                  </div>
+                  {aiFields && (aiFields.primary || aiFields.secondary_drawing_fields) && (
+                    <div className="mx-4 mt-3 rounded-lg border border-[#005c87]/20 bg-[#005c87]/5 px-3 py-2.5">
+                      <div className="flex items-center gap-1.5 mb-2 text-[11px] font-semibold text-[#005c87] uppercase">
+                        <Sparkles size={12} /> AI suggested fields — review and apply
+                      </div>
+                      {aiFields.primary && (
+                        <div className="space-y-1.5">
+                          {([
+                            ['document_title', 'Title (info only)', null],
+                            ['doc_number', 'Doc Number', 'doc_number'],
+                            ['revision', 'Revision', 'revision'],
+                            ['issue_date', 'Issue Date', 'issue_date'],
+                            ['expiry_date', 'Expiry Date', 'expiry_date'],
+                            ['issuing_authority', 'Issuing Authority', 'issuing_authority'],
+                          ] as const).map(([aiKey, label, formField]) => {
+                            const f = aiFields.primary?.[aiKey]
+                            if (!f || f.value === null || f.value === undefined) return null
+                            return (
+                              <div key={aiKey} className="flex items-center justify-between gap-2 text-xs">
+                                <span className="text-gray-500 w-28 shrink-0">{label}</span>
+                                <span className="flex-1 flex items-center gap-1.5 min-w-0">
+                                  <span className="truncate text-gray-800">{String(f.value)}</span>
+                                  <ConfidenceBadge score={f.confidence} />
+                                </span>
+                                {formField && (
+                                  <button
+                                    type="button"
+                                    onClick={() => applyAiField(formField as keyof DocFormState, f.value)}
+                                    className="shrink-0 px-2 py-0.5 text-[10px] font-medium border border-[#005c87]/40 text-[#005c87] rounded hover:bg-[#005c87]/10"
+                                  >
+                                    Apply
+                                  </button>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                      {aiFields.secondary_drawing_fields && (
+                        <details className="mt-2">
+                          <summary className="text-[10px] text-gray-500 cursor-pointer select-none">Also detected (informational — engineering/drawing-style fields, not applied to this form)</summary>
+                          <div className="mt-1 text-[10px] text-gray-500 space-y-0.5">
+                            {Object.entries(aiFields.secondary_drawing_fields).map(([k, v]) => (
+                              <div key={k}>{k}: {typeof v.value === 'object' ? JSON.stringify(v.value) : String(v.value)}</div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  )}
+                  <div className="px-4 py-3 grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase">Document Type <span className="text-red-500">*</span></label>
+                      <select value={docForm.document_type} onChange={(e) => setDocForm({ ...docForm, document_type: e.target.value })} className="w-full text-xs border border-gray-300 rounded px-2 py-1.5">
+                        {CUSTOMER_DOC_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase">Category</label>
+                      <select value={docForm.category} onChange={(e) => setDocForm({ ...docForm, category: e.target.value })} className="w-full text-xs border border-gray-300 rounded px-2 py-1.5">
+                        {CUSTOMER_DOC_CATEGORIES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase">Doc Number</label>
+                      <input value={docForm.doc_number} onChange={(e) => setDocForm({ ...docForm, doc_number: e.target.value })} className="w-full text-xs border border-gray-300 rounded px-2 py-1.5" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase">Revision</label>
+                      <input value={docForm.revision} onChange={(e) => setDocForm({ ...docForm, revision: e.target.value })} maxLength={20} className="w-full text-xs border border-gray-300 rounded px-2 py-1.5" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase">Issue Date</label>
+                      <input type="date" value={docForm.issue_date} onChange={(e) => setDocForm({ ...docForm, issue_date: e.target.value })} className="w-full text-xs border border-gray-300 rounded px-2 py-1.5" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase">Expiry Date</label>
+                      <input type="date" value={docForm.expiry_date} onChange={(e) => setDocForm({ ...docForm, expiry_date: e.target.value })} className="w-full text-xs border border-gray-300 rounded px-2 py-1.5" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase">Issuing Authority</label>
+                      <input value={docForm.issuing_authority} onChange={(e) => setDocForm({ ...docForm, issuing_authority: e.target.value })} className="w-full text-xs border border-gray-300 rounded px-2 py-1.5" />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase">Status</label>
+                      <select value={docForm.status} onChange={(e) => setDocForm({ ...docForm, status: e.target.value })} className="w-full text-xs border border-gray-300 rounded px-2 py-1.5">
+                        {CUSTOMER_DOC_STATUSES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[11px] font-semibold text-gray-500 mb-1 uppercase">File (PDF / DOCX / XLSX){editingDocId ? ' — leave empty to keep current' : ''}</label>
+                      <input type="file" accept=".pdf,.docx,.xlsx" onChange={(e) => setDocFile(e.target.files?.[0] ?? null)} className="w-full text-xs" />
+                      {docFile && <p className="mt-1 text-[11px] text-gray-500">Selected: {docFile.name}</p>}
+                    </div>
+                    {docError && <p className="col-span-2 text-xs text-red-600">{docError}</p>}
+                  </div>
+                  <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-100">
+                    <button onClick={() => { setShowDocModal(false); setAiFields(null) }} className="px-3 py-1.5 text-xs border border-gray-300 rounded text-gray-600 hover:bg-gray-50">Cancel</button>
+                    <button onClick={handleSaveDoc} disabled={docUploading} className="px-3 py-1.5 text-xs bg-[#005c87] text-white rounded hover:bg-[#004a6e] disabled:opacity-50">{docUploading ? 'Saving...' : editingDocId ? 'Save' : (isNew ? 'Add' : 'Save')}</button>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}
 
         {/* ---- NOTES & ATTACHMENTS TAB ------------------------------ */}
         {activeTab === 'notes' && (
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <p className="text-xs text-gray-400 text-center py-8">No notes or attachments.</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center gap-1.5 mb-2"><FileText size={13} className="text-[#005c87]" /><h3 className="text-xs font-semibold text-gray-700">Internal Notes</h3></div>
+              <textarea
+                value={notesText}
+                onChange={(e) => setNotesText(e.target.value)}
+                rows={10}
+                placeholder="Internal notes about this customer (payment behaviour, key contacts, special instructions)..."
+                className="w-full text-xs border border-gray-200 rounded px-3 py-2 resize-y focus:border-[#005c87] focus:outline-none"
+              />
+              <p className="mt-2 text-[11px] text-gray-400">Notes are saved when you click <span className="font-medium text-gray-600">Save</span> on the General tab.</p>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5"><Link size={13} className="text-[#005c87]" /><h3 className="text-xs font-semibold text-gray-700">Attachments</h3></div>
+                <label className={`inline-flex items-center gap-1 text-xs cursor-pointer ${notesAttaching ? 'text-gray-400' : 'text-[#005c87] hover:text-[#004a6e]'}`} title="Attach a file">
+                  {notesAttaching ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} {notesAttaching ? 'Attaching…' : 'Add'}
+                  <input type="file" className="hidden" disabled={notesAttaching} onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAttachFromNotes(f); e.target.value = '' }} />
+                </label>
+              </div>
+              {documents.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-6">No attachments. Uploaded documents appear here and in the Documents tab.</p>
+              ) : (
+                <ul className="divide-y divide-gray-50">
+                  {documents.map((doc) => (
+                    <li key={doc.id} className="flex items-center justify-between py-2 text-xs">
+                      <div className="min-w-0">
+                        <div className="text-gray-700 truncate">{doc.file_name}</div>
+                        <div className="text-gray-400">{doc.document_type}{doc.uploaded_at ? ` \u00b7 ${formatDate(doc.uploaded_at)}` : ''}</div>
+                      </div>
+                      {doc.file_path && <a href={`/${doc.file_path}`} target="_blank" rel="noreferrer" className="text-gray-500 hover:text-[#005c87] shrink-0"><Download size={13} /></a>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         )}
 
         {/* ---- HISTORY TAB ------------------------------------------ */}
         {activeTab === 'history' && (
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <p className="text-xs text-gray-400 text-center py-8">No history records.</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <h3 className="text-xs font-semibold text-gray-700 mb-3">Record Information</h3>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between"><span className="text-gray-500">Status</span><span className="font-medium">{status}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Created On</span><span className="font-medium">{customer?.created_at ? formatDate(customer.created_at) : '-'}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Last Modified</span><span className="font-medium">{customer?.updated_at ? formatDate(customer.updated_at) : '-'}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Contacts</span><span className="font-medium">{contacts.length}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Documents</span><span className="font-medium">{documents.length}</span></div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <h3 className="text-xs font-semibold text-gray-700 mb-3">Recent Activity</h3>
+              {(() => {
+                const items: { label: string; date: string }[] = []
+                if (customer?.created_at) items.push({ label: 'Customer record created', date: formatDate(customer.created_at) })
+                if (customer?.updated_at && customer.updated_at !== customer.created_at) items.push({ label: 'Customer record last modified', date: formatDate(customer.updated_at) })
+                documents.forEach((d) => items.push({ label: `Document uploaded: ${d.document_type ?? d.file_name}`, date: d.uploaded_at ? formatDate(d.uploaded_at) : '-' }))
+                return items.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-6">No recorded activity yet.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {items.map((a, i) => (<li key={i} className="flex items-start gap-2 text-xs"><span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#005c87] shrink-0" /><div><div className="text-gray-700">{a.label}</div><div className="text-gray-400">{a.date}</div></div></li>))}
+                  </ul>
+                )
+              })()}
+              <p className="mt-3 text-[11px] text-gray-400">Full change history is captured in the global Audit Trail (Administrator view).</p>
+            </div>
           </div>
         )}
       </div>

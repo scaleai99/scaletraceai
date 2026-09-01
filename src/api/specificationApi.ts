@@ -1,6 +1,8 @@
 /**
  * specificationApi.ts - Specification Master API client.
  * Endpoints: /api/v1/specifications (list/create), /{id} (get/update/delete).
+ * The approved aerospace/defence spec library (AMS/MIL/ASTM/JSS) referenced
+ * by RFQ, Configuration Review, Special Process and Spec-AI.
  */
 import { apiClient } from './axiosClient'
 

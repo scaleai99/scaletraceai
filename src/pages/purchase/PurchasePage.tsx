@@ -17,6 +17,7 @@ import {
   Modal,
   Select,
   StateMachineBadge,
+  SupplierPicker,
   Table,
 } from '../../components/ui'
 import { DemoBanner } from '../../components/ui/DemoBanner'
@@ -25,12 +26,15 @@ import { formatDate, formatINR } from '../../lib/utils'
 import { useDemoFallback } from '../../lib/useDemoFallback'
 import { DEMO_PRS, DEMO_POS } from '../../lib/demoData'
 import {
+  createPO,
   createPR,
   listGRNs,
   listPOs,
   listPRs,
   receivePO,
   type GRN,
+  type POCreatePayload,
+  type POLineCreatePayload,
   type PurchaseOrder,
   type PurchaseRequisition,
 } from '../../api/purchaseApi'
@@ -489,7 +493,7 @@ function PODetailPanel({
   onReceive: () => void
   onClose: () => void
 }) {
-  const lineTotal = (po.line_items ?? []).reduce(
+  const lineTotal = po.line_items.reduce(
     (sum, li) => sum + (li.quantity ?? 0) * (li.unit_price ?? 0),
     0
   )
@@ -532,7 +536,7 @@ function PODetailPanel({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {(po.line_items ?? []).map((li) => (
+            {po.line_items.map((li) => (
               <tr key={li.id} className="hover:bg-gray-50">
                 <td className="px-3 py-2 text-gray-500">{li.line_number}</td>
                 <td className="px-3 py-2 font-mono text-gray-800">{li.item_code ?? '-'}</td>
@@ -593,6 +597,161 @@ function PODetailPanel({
 }
 
 // ---------------------------------------------------------------------------
+// New PO Modal
+// ---------------------------------------------------------------------------
+interface POLineForm {
+  item_code: string
+  description: string
+  quantity: string
+  unit_price: string
+  gst_rate: string
+  hsn_code: string
+  delivery_date: string
+}
+
+const EMPTY_PO_LINE: POLineForm = {
+  item_code: '', description: '', quantity: '', unit_price: '', gst_rate: '18', hsn_code: '', delivery_date: '',
+}
+
+interface NewPOModalProps {
+  open: boolean
+  onClose: () => void
+  onCreated: () => void
+}
+
+function NewPOModal({ open, onClose, onCreated }: NewPOModalProps) {
+  const [supplierId, setSupplierId] = useState<string | null>(null)
+  const [deliveryAddress, setDeliveryAddress] = useState('')
+  const [paymentTerms, setPaymentTerms] = useState('')
+  const [lines, setLines] = useState<POLineForm[]>([{ ...EMPTY_PO_LINE }])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const reset = () => {
+    setSupplierId(null); setDeliveryAddress(''); setPaymentTerms('')
+    setLines([{ ...EMPTY_PO_LINE }]); setError(null)
+  }
+
+  const setLine = (i: number, patch: Partial<POLineForm>) =>
+    setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)))
+  const addLine = () => setLines((prev) => [...prev, { ...EMPTY_PO_LINE }])
+  const removeLine = (i: number) => setLines((prev) => prev.filter((_, idx) => idx !== i))
+
+  // Live estimate — final CGST/SGST vs IGST split is computed on the backend from state codes.
+  const taxable = lines.reduce((sum, l) => sum + (parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0), 0)
+  const estTax = lines.reduce((sum, l) => {
+    const base = (parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0)
+    return sum + base * ((parseFloat(l.gst_rate) || 0) / 100)
+  }, 0)
+  const estTotal = taxable + estTax
+
+  const handleSubmit = () => {
+    const validLines = lines.filter((l) => l.quantity.trim() && l.unit_price.trim())
+    if (!supplierId) { setError('Select a supplier (only Active suppliers can receive a PO).'); return }
+    if (validLines.length === 0) { setError('Add at least one line item with quantity and unit price.'); return }
+    const payloadLines: POLineCreatePayload[] = validLines.map((l) => ({
+      item_code: l.item_code.trim() || undefined,
+      description: l.description.trim() || undefined,
+      quantity: parseFloat(l.quantity),
+      unit_price: parseFloat(l.unit_price),
+      gst_rate: l.gst_rate.trim() ? parseFloat(l.gst_rate) : undefined,
+      hsn_code: l.hsn_code.trim() || undefined,
+      delivery_date: l.delivery_date || undefined,
+    }))
+    const payload: POCreatePayload = {
+      supplier_id: supplierId,
+      delivery_address: deliveryAddress.trim() || undefined,
+      payment_terms: paymentTerms.trim() ? parseInt(paymentTerms, 10) : undefined,
+      line_items: payloadLines,
+    }
+    setSaving(true); setError(null)
+    createPO(payload)
+      .then(() => { onCreated(); onClose(); reset() })
+      .catch((err: unknown) => {
+        const e = err as { response?: { data?: { detail?: string } }; message?: string }
+        setError(e?.response?.data?.detail ?? e?.message ?? 'Failed to create purchase order')
+      })
+      .finally(() => setSaving(false))
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="New Purchase Order"
+      size="xl"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button variant="primary" onClick={handleSubmit} loading={saving}>Create PO</Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {error && (
+          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <SupplierPicker label="Supplier" value={supplierId} onChange={(id) => setSupplierId(id)} required />
+          <Input label="Payment Terms (days)" type="number" min={0} value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="e.g. 30" />
+          <Input label="Delivery Address" value={deliveryAddress} onChange={(e) => setDeliveryAddress(e.target.value)} placeholder="Ship-to location" />
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-sm font-semibold text-gray-700">Line Items</h4>
+            <Button variant="secondary" size="sm" onClick={addLine}>+ Add Line</Button>
+          </div>
+          <div className="overflow-x-auto border border-gray-200 rounded-lg">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100 text-gray-500">
+                  <th className="px-2 py-2 text-left font-medium">Item Code</th>
+                  <th className="px-2 py-2 text-left font-medium">Description</th>
+                  <th className="px-2 py-2 text-left font-medium">Qty *</th>
+                  <th className="px-2 py-2 text-left font-medium">Unit Price *</th>
+                  <th className="px-2 py-2 text-left font-medium">GST %</th>
+                  <th className="px-2 py-2 text-left font-medium">HSN</th>
+                  <th className="px-2 py-2 text-left font-medium">Delivery</th>
+                  <th className="px-2 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((l, i) => (
+                  <tr key={i} className="border-b border-gray-50">
+                    <td className="px-2 py-1.5"><input value={l.item_code} onChange={(e) => setLine(i, { item_code: e.target.value })} className="w-24 border border-gray-200 rounded px-2 py-1" placeholder="RAW-AL6061" /></td>
+                    <td className="px-2 py-1.5"><input value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} className="w-40 border border-gray-200 rounded px-2 py-1" placeholder="Material" /></td>
+                    <td className="px-2 py-1.5"><input type="number" min={0} value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} className="w-20 border border-gray-200 rounded px-2 py-1" /></td>
+                    <td className="px-2 py-1.5"><input type="number" min={0} value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} className="w-24 border border-gray-200 rounded px-2 py-1" /></td>
+                    <td className="px-2 py-1.5"><input type="number" min={0} value={l.gst_rate} onChange={(e) => setLine(i, { gst_rate: e.target.value })} className="w-16 border border-gray-200 rounded px-2 py-1" /></td>
+                    <td className="px-2 py-1.5"><input value={l.hsn_code} onChange={(e) => setLine(i, { hsn_code: e.target.value })} className="w-20 border border-gray-200 rounded px-2 py-1" placeholder="7601" /></td>
+                    <td className="px-2 py-1.5"><input type="date" value={l.delivery_date} onChange={(e) => setLine(i, { delivery_date: e.target.value })} className="w-32 border border-gray-200 rounded px-2 py-1" /></td>
+                    <td className="px-2 py-1.5 text-center">
+                      {lines.length > 1 && (
+                        <button type="button" onClick={() => removeLine(i)} className="text-gray-300 hover:text-red-500" title="Remove line">×</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <dl className="space-y-1 text-sm w-64">
+            <div className="flex justify-between"><dt className="text-gray-500">Taxable Value</dt><dd className="font-mono text-gray-800">₹{formatINR(taxable)}</dd></div>
+            <div className="flex justify-between"><dt className="text-gray-500">Estimated GST</dt><dd className="font-mono text-gray-800">₹{formatINR(estTax)}</dd></div>
+            <div className="flex justify-between border-t border-gray-200 pt-2 font-semibold"><dt className="text-gray-800">Estimated Total</dt><dd className="font-mono text-gray-900">₹{formatINR(estTotal)}</dd></div>
+          </dl>
+        </div>
+        <p className="text-[11px] text-gray-400 text-right">Estimate only — final CGST/SGST vs IGST split is computed on save from the supplier and plant state codes.</p>
+      </div>
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // PO Tab
 // ---------------------------------------------------------------------------
 function buildPOColumns(): Column<PORow>[] {
@@ -608,7 +767,9 @@ function buildPOColumns(): Column<PORow>[] {
     {
       key: 'supplier_id',
       header: 'Supplier',
-      render: (row) => <span className="text-sm text-gray-800">{row.supplier_id as string}</span>,
+      render: (row) => (
+        <span className="text-sm text-gray-800">{(row.supplier_name as string | null) ?? (row.supplier_id as string | null) ?? '\u2014'}</span>
+      ),
     },
     {
       key: 'total_value',
@@ -677,6 +838,7 @@ function POTab({ onRefresh }: POTabProps) {
 
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null)
   const [receiveModal, setReceiveModal] = useState(false)
+  const [showNewPO, setShowNewPO] = useState(false)
   const columns = buildPOColumns()
 
   const openCount = pos.filter((p) => ['Sent', 'Partially Received'].includes(p.status)).length
@@ -699,7 +861,8 @@ function POTab({ onRefresh }: POTabProps) {
             colour="bg-green-50"
           />
         </div>
-        <div className="ml-4">
+        <div className="ml-4 flex items-center gap-2">
+          <Button variant="primary" size="sm" onClick={() => setShowNewPO(true)}>+ New PO</Button>
           <Button variant="secondary" size="sm" onClick={handleRefresh} icon={<RefreshCw size={13} />} />
         </div>
       </div>
@@ -747,6 +910,13 @@ function POTab({ onRefresh }: POTabProps) {
           setSelectedPO(null)
           handleRefresh()
         }}
+      />
+
+      {/* New PO modal */}
+      <NewPOModal
+        open={showNewPO}
+        onClose={() => setShowNewPO(false)}
+        onCreated={handleRefresh}
       />
     </div>
   )

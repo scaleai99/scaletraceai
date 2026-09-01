@@ -7,7 +7,7 @@
  * - Calibration stub at /api/v1/qms/calibration
  */
 
-import { apiClient } from './axiosClient'
+import axios from 'axios'
 
 const NCR_BASE = '/api/v1/qms/ncrs'
 const CAPA_BASE = '/api/v1/qms/capas'
@@ -118,31 +118,31 @@ export interface ListCAPAsParams {
 
 /** List NCRs with optional filters */
 export async function listNCRs(params: ListNCRsParams = {}): Promise<NCR[]> {
-  const { data } = await apiClient.get<NCR[]>(NCR_BASE, { params })
-  return Array.isArray(data) ? data : []
+  const { data } = await axios.get<NCR[]>(NCR_BASE, { params })
+  return data
 }
 
 /** Get a single NCR by ID */
 export async function getNCR(id: string): Promise<NCR> {
-  const { data } = await apiClient.get<NCR>(`${NCR_BASE}/${id}`)
+  const { data } = await axios.get<NCR>(`${NCR_BASE}/${id}`)
   return data
 }
 
 /** Create a new NCR */
 export async function createNCR(body: NCRCreate): Promise<NCR> {
-  const { data } = await apiClient.post<NCR>(NCR_BASE, body)
+  const { data } = await axios.post<NCR>(NCR_BASE, body)
   return data
 }
 
 /** Update NCR fields */
 export async function updateNCR(id: string, body: NCRUpdate): Promise<NCR> {
-  const { data } = await apiClient.patch<NCR>(`${NCR_BASE}/${id}`, body)
+  const { data } = await axios.patch<NCR>(`${NCR_BASE}/${id}`, body)
   return data
 }
 
 /** Transition NCR state */
 export async function transitionNCR(id: string, body: TransitionRequest): Promise<NCR> {
-  const { data } = await apiClient.post<NCR>(`${NCR_BASE}/${id}/transition`, body)
+  const { data } = await axios.post<NCR>(`${NCR_BASE}/${id}/transition`, body)
   return data
 }
 
@@ -152,31 +152,31 @@ export async function transitionNCR(id: string, body: TransitionRequest): Promis
 
 /** List CAPAs with optional filters */
 export async function listCAPAs(params: ListCAPAsParams = {}): Promise<CAPA[]> {
-  const { data } = await apiClient.get<CAPA[]>(CAPA_BASE, { params })
-  return Array.isArray(data) ? data : []
+  const { data } = await axios.get<CAPA[]>(CAPA_BASE, { params })
+  return data
 }
 
 /** Get a single CAPA by ID */
 export async function getCAPADetail(id: string): Promise<CAPA> {
-  const { data } = await apiClient.get<CAPA>(`${CAPA_BASE}/${id}`)
+  const { data } = await axios.get<CAPA>(`${CAPA_BASE}/${id}`)
   return data
 }
 
 /** Create a new CAPA */
 export async function createCAPA(body: CAPACreate): Promise<CAPA> {
-  const { data } = await apiClient.post<CAPA>(CAPA_BASE, body)
+  const { data } = await axios.post<CAPA>(CAPA_BASE, body)
   return data
 }
 
 /** Update CAPA fields */
 export async function updateCAPA(id: string, body: CAPAUpdate): Promise<CAPA> {
-  const { data } = await apiClient.patch<CAPA>(`${CAPA_BASE}/${id}`, body)
+  const { data } = await axios.patch<CAPA>(`${CAPA_BASE}/${id}`, body)
   return data
 }
 
 /** Transition CAPA state */
 export async function transitionCAPA(id: string, body: TransitionRequest): Promise<CAPA> {
-  const { data } = await apiClient.post<CAPA>(`${CAPA_BASE}/${id}/transition`, body)
+  const { data } = await axios.post<CAPA>(`${CAPA_BASE}/${id}/transition`, body)
   return data
 }
 
@@ -252,38 +252,38 @@ export interface ListCalibrationParams {
 
 /** List calibration records with optional filters */
 export async function listCalibrationRecords(params: ListCalibrationParams = {}): Promise<CalibrationRecord[]> {
-  const { data } = await apiClient.get<CalibrationRecord[]>(CALIBRATION_BASE, { params })
-  return Array.isArray(data) ? data : []
+  const { data } = await axios.get<CalibrationRecord[]>(CALIBRATION_BASE, { params })
+  return data
 }
 
 /** Create a new calibration record */
 export async function createCalibrationRecord(body: CalibrationCreate): Promise<CalibrationRecord> {
-  const { data } = await apiClient.post<CalibrationRecord>(CALIBRATION_BASE, body)
+  const { data } = await axios.post<CalibrationRecord>(CALIBRATION_BASE, body)
   return data
 }
 
 /** Get a single calibration record by ID */
 export async function getCalibrationRecord(id: string): Promise<CalibrationRecord> {
-  const { data } = await apiClient.get<CalibrationRecord>(`${CALIBRATION_BASE}/${id}`)
+  const { data } = await axios.get<CalibrationRecord>(`${CALIBRATION_BASE}/${id}`)
   return data
 }
 
 /** Update calibration record fields */
 export async function updateCalibrationRecord(id: string, body: CalibrationUpdate): Promise<CalibrationRecord> {
-  const { data } = await apiClient.patch<CalibrationRecord>(`${CALIBRATION_BASE}/${id}`, body)
+  const { data } = await axios.patch<CalibrationRecord>(`${CALIBRATION_BASE}/${id}`, body)
   return data
 }
 
 /** Record a calibration event */
 export async function recordCalibration(id: string, body: CalibrateRequest): Promise<CalibrationRecord> {
-  const { data } = await apiClient.post<CalibrationRecord>(`${CALIBRATION_BASE}/${id}/calibrate`, body)
+  const { data } = await axios.post<CalibrationRecord>(`${CALIBRATION_BASE}/${id}/calibrate`, body)
   return data
 }
 
 /** Get calibration dashboard statistics */
 export async function getCalibrationStats(): Promise<CalibrationStats> {
-  const { data } = await apiClient.get<CalibrationStats>(`${CALIBRATION_BASE}/stats`)
-  return data ?? { total: 0, overdue_count: 0, due_within_30_days: 0, active: 0 }
+  const { data } = await axios.get<CalibrationStats>(`${CALIBRATION_BASE}/stats`)
+  return data
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +297,6 @@ export interface CalibrationStub {
 
 /** @deprecated Use listCalibrationRecords() instead */
 export async function getCalibration(): Promise<CalibrationStub> {
-  const { data } = await apiClient.get<CalibrationStub>(CALIBRATION_BASE)
-  return data ?? { instruments: [], upcoming_calibrations: [] }
+  const { data } = await axios.get<CalibrationStub>(CALIBRATION_BASE)
+  return data
 }

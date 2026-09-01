@@ -37,7 +37,7 @@ export function SupplierQualityClausesPage() {
     try {
       setClauses(await listClauses(supplierId))
     } catch {
-      setClauses([])
+      setError('Could not load clauses.')
     } finally {
       setLoading(false)
     }

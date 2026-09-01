@@ -30,6 +30,9 @@ export { GSTINInput } from './GSTINInput'
 
 export { DateInput } from './DateInput'
 
+export { SupplierPicker } from './SupplierPicker'
+export type { SupplierPickerProps } from './SupplierPicker'
+
 export { AuditTrailPanel } from './AuditTrailPanel'
 export type { AuditEntry } from './AuditTrailPanel'
 
@@ -38,3 +41,4 @@ export { AiExtractionPanel } from './AiExtractionPanel'
 export { RfqSuggestionCard } from './RfqSuggestionCard'
 
 export { DemoBanner } from './DemoBanner'
+export { ItemPicker } from './ItemPicker'

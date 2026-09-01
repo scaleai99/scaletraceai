@@ -6,7 +6,7 @@ export function ManagementReviewPage() {
   const [rows, setRows] = useState<ManagementReview[]>([])
   const [err, setErr] = useState('')
   const [f, setF] = useState({ review_date: '', chaired_by: '', attendees: '', agenda: '' })
-  const load = useCallback(() => { listMrm().then(setRows).catch(() => setRows([])) }, [])
+  const load = useCallback(() => { listMrm().then(setRows).catch(e => setErr(String(e))) }, [])
   useEffect(() => { load() }, [load])
   const add = async () => { setErr(''); try { await createMrm(f); setF({ review_date: '', chaired_by: '', attendees: '', agenda: '' }); load() } catch (e: any) { setErr(e?.response?.data?.detail || String(e)) } }
   const finalize = async (m: ManagementReview) => { await updateMrm(m.id, { status: 'Finalized' }); load() }

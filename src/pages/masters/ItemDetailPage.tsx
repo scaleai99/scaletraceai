@@ -4,15 +4,15 @@
  * Layout matches the BRACKET ASSY "" LH reference image exactly:
  *   - Header: item image + item name + Finished Good badge + meta info + action buttons
  *   - Certification badges (NADCAP, AS9100) in header
- *   - 12 tabs: General Information | Specifications | Category & Classification |
- *              Unit & Pricing | Inventory | Manufacturing | Quality |
- *              Documents | Suppliers | Customer Part Map | BOM | History
- *   - General Information: 4-column SectionCard layout
- *   - Documents, Supplier Info, Customer Part Mapping sections
+ *   - 7 tabs: General Information | Category & Classification | Manufacturing |
+ *             Documents | Customer Part Map | BOM | History
+ *   - General Information: Basic Information + Product Classification +
+ *     Drawing & Revision cards
+ *   - Documents, Customer Part Mapping sections
  *   - Footer with audit info
  */
 
-import { useCallback, useEffect, useState, useRef } from 'react'
+import { Fragment, useCallback, useEffect, useState, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Package, Plus, Shield, BarChart2, Boxes, FileText,
@@ -32,35 +32,39 @@ import {
   updateItem,
   deleteItem,
   ItemRecord,
+  listItemDocuments,
+  listItemDocumentHistory,
+  uploadItemDocument,
+  deleteItemDocument,
+  type ItemDocument,
+  listItemBom,
+  addItemBom,
+  deleteItemBom,
+  type ItemBomComponent,
+  listItemCustomerParts,
+  addItemCustomerPart,
+  deleteItemCustomerPart,
+  type ItemCustomerPart,
 } from '../../api/itemApi'
+import { listCustomers, type Customer } from '../../api/customerApi'
 
 // ---------------------------------------------------------------------------
 // Tab definitions
 // ---------------------------------------------------------------------------
 type TabId =
   | 'general'
-  | 'specifications'
   | 'category'
-  | 'unitPricing'
-  | 'inventory'
   | 'manufacturing'
-  | 'quality'
   | 'documents'
-  | 'suppliers'
   | 'customerPartMap'
   | 'bom'
   | 'history'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'general', label: 'General Information' },
-  { id: 'specifications', label: 'Specifications' },
   { id: 'category', label: 'Category & Classification' },
-  { id: 'unitPricing', label: 'Unit & Pricing' },
-  { id: 'inventory', label: 'Inventory' },
   { id: 'manufacturing', label: 'Manufacturing' },
-  { id: 'quality', label: 'Quality' },
   { id: 'documents', label: 'Documents' },
-  { id: 'suppliers', label: 'Suppliers' },
   { id: 'customerPartMap', label: 'Customer Part Map' },
   { id: 'bom', label: 'BOM' },
   { id: 'history', label: 'History' },
@@ -343,30 +347,6 @@ function FieldTextarea({
 }
 
 /** Document row interface */
-interface ItemDocument {
-  id: string
-  documentType: string
-  fileName: string
-  revision: string
-  uploadedOn: string
-  uploadedBy: string
-}
-
-/** Supplier row interface */
-interface ItemSupplier {
-  supplierCode: string
-  supplierName: string
-  supplyType: string
-  leadTime: string
-}
-
-/** Customer Part Mapping interface */
-interface CustomerPartMap {
-  customerCode: string
-  customerName: string
-  customerPartNo: string
-}
-
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -480,12 +460,36 @@ export function ItemDetailPage() {
 
   // ---- Documents ----
   const [documents, setDocuments] = useState<ItemDocument[]>([])
+  const [docHistory, setDocHistory] = useState<ItemDocument[]>([])
+  const [showUploadDoc, setShowUploadDoc] = useState(false)
+  const [uploadDocType, setUploadDocType] = useState('Drawing')
+  const [uploadDocRevision, setUploadDocRevision] = useState('')
+  const [uploadDocNumber, setUploadDocNumber] = useState('')
+  const [docBusy, setDocBusy] = useState(false)
+  const [docError, setDocError] = useState<string | null>(null)
+  const [expandedDocId, setExpandedDocId] = useState<string | null>(null)
+  const docFileRef = useRef<HTMLInputElement>(null)
 
-  // ---- Suppliers ----
-  const [suppliers, setSuppliers] = useState<ItemSupplier[]>([])
 
   // ---- Customer Part Mapping ----
-  const [customerPartMaps, setCustomerPartMaps] = useState<CustomerPartMap[]>([])
+  const [customerParts, setCustomerParts] = useState<ItemCustomerPart[]>([])
+  const [bomComponents, setBomComponents] = useState<ItemBomComponent[]>([])
+  const [customersList, setCustomersList] = useState<Customer[]>([])
+  // Customer Part Map add-form
+  const [showAddCpm, setShowAddCpm] = useState(false)
+  const [cpmCustomerId, setCpmCustomerId] = useState('')
+  const [cpmPartNo, setCpmPartNo] = useState('')
+  const [cpmBusy, setCpmBusy] = useState(false)
+  const [cpmError, setCpmError] = useState<string | null>(null)
+  // BOM add-form
+  const [showAddBom, setShowAddBom] = useState(false)
+  const [bomCode, setBomCode] = useState('')
+  const [bomName, setBomName] = useState('')
+  const [bomQty, setBomQty] = useState('')
+  const [bomUom, setBomUom] = useState('')
+  const [bomLevel, setBomLevel] = useState('1')
+  const [bomBusy, setBomBusy] = useState(false)
+  const [bomError, setBomError] = useState<string | null>(null)
 
   // ---- Audit fields ----
   const [createdAt, setCreatedAt] = useState('')
@@ -625,6 +629,13 @@ export function ItemDetailPage() {
     }
     
     loadItem()
+    if (!isNew && id) {
+      listItemDocuments(id).then(setDocuments).catch(() => setDocuments([]))
+      listItemDocumentHistory(id).then(setDocHistory).catch(() => setDocHistory([]))
+      listItemBom(id).then(setBomComponents).catch(() => setBomComponents([]))
+      listItemCustomerParts(id).then(setCustomerParts).catch(() => setCustomerParts([]))
+    }
+    listCustomers({}).then(setCustomersList).catch(() => setCustomersList([]))
   }, [id, isNew, resetForm])
 
   // ---------------------------------------------------------------------------
@@ -643,16 +654,24 @@ export function ItemDetailPage() {
     console.log('[ItemDetailPage] AI Extraction complete:', result.model_used)
     if (pendingFile) setUploadedFileName(pendingFile.name)
     
-    // Populate fields from extraction result
+    // Populate fields from extraction result (review the values before Save).
     if (result.drawing_number?.value) setDrawingNumber(String(result.drawing_number.value))
+    if (result.part_number?.value) setPartNumber(String(result.part_number.value))
     if (result.part_name?.value) setItemName(String(result.part_name.value))
     if (result.revision?.value) setRevision(String(result.revision.value))
-    if (result.material_spec?.value) setMaterial(String(result.material_spec.value))
+    // material name preferred; fall back to material spec if the model only found the spec
+    if (result.material?.value) setMaterial(String(result.material.value))
+    else if (result.material_spec?.value) setMaterial(String(result.material_spec.value))
     if (result.length_mm?.value) setLength(String(result.length_mm.value))
     if (result.width_mm?.value) setWidth(String(result.width_mm.value))
     if (result.diameter_mm?.value) setWidth(String(result.diameter_mm.value))
     if (result.surface_treatment?.value) setAnodizing(String(result.surface_treatment.value))
+    if (result.tolerance?.value) setTolerance(String(result.tolerance.value))
+    if (result.key_characteristics?.value) setKeyCharacteristics(String(result.key_characteristics.value))
     if (result.drawing_date?.value) setDrawingDate(String(result.drawing_date.value))
+    if (result.issued_by?.value) setIssuedBy(String(result.issued_by.value))
+    if (result.approved_by?.value) setApprovedBy(String(result.approved_by.value))
+    if (result.special_process?.value) setSpecialProcessReq('Yes')
     
     setShowAiModal(false)
     setPendingFile(null)
@@ -665,6 +684,135 @@ export function ItemDetailPage() {
     setShowAiModal(false)
     setPendingFile(null)
     setSaveError(msg)
+  }
+
+  // ---------------------------------------------------------------------------
+  // Item document handlers (versioned upload + revision history)
+  // ---------------------------------------------------------------------------
+  const reloadDocuments = useCallback(() => {
+    if (!id || id === 'new') return
+    listItemDocuments(id).then(setDocuments).catch(() => setDocuments([]))
+    listItemDocumentHistory(id).then(setDocHistory).catch(() => setDocHistory([]))
+  }, [id])
+
+  const handleDocFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    if (isNew || !id) { setDocError('Save the item before uploading documents.'); return }
+    setDocBusy(true); setDocError(null)
+    try {
+      await uploadItemDocument(id, f, {
+        document_type: uploadDocType || 'Drawing',
+        revision: uploadDocRevision.trim() || undefined,
+        doc_number: uploadDocNumber.trim() || undefined,
+      })
+      setUploadDocRevision(''); setUploadDocNumber(''); setShowUploadDoc(false)
+      reloadDocuments()
+    } catch (err: any) {
+      setDocError(err?.response?.data?.detail ?? 'Upload failed')
+    } finally {
+      setDocBusy(false)
+    }
+  }
+
+  const handleDeleteDoc = async (docId: string) => {
+    if (!id) return
+    try {
+      await deleteItemDocument(id, docId)
+      reloadDocuments()
+    } catch { /* ignore */ }
+  }
+
+  // Apply AI-extracted fields (raw extractor schema) into the form — the user
+  // clicks to apply after reviewing; nothing is written to the saved record
+  // automatically. Values land in the form and are persisted on Save.
+  const applyExtractedToForm = (fields: any) => {
+    if (!fields) return
+    const v = (k: string) => fields?.[k]?.value
+    if (v('drawing_number')) setDrawingNumber(String(v('drawing_number')))
+    if (v('part_number')) setPartNumber(String(v('part_number')))
+    if (v('part_name')) setItemName(String(v('part_name')))
+    if (v('revision')) setRevision(String(v('revision')))
+    if (v('material')) setMaterial(String(v('material')))
+    else if (v('material_spec')) setMaterial(String(v('material_spec')))
+    if (v('surface_treatment')) setAnodizing(String(v('surface_treatment')))
+    if (v('tolerance')) setTolerance(String(v('tolerance')))
+    if (v('key_characteristics')) setKeyCharacteristics(String(v('key_characteristics')))
+    if (v('drawing_date')) setDrawingDate(String(v('drawing_date')))
+    if (v('issued_by')) setIssuedBy(String(v('issued_by')))
+    if (v('approved_by')) setApprovedBy(String(v('approved_by')))
+    const dims = fields?.dimensions?.value
+    if (dims && typeof dims === 'object') {
+      if (dims.length_mm != null) setLength(String(dims.length_mm))
+      if (dims.width_mm != null) setWidth(String(dims.width_mm))
+      if (dims.height_mm != null) setHeight(String(dims.height_mm))
+      if (dims.weight_g != null) setNetWeight(String(Number(dims.weight_g) / 1000))
+    }
+    const sp = fields?.special_processes?.value
+    if ((Array.isArray(sp) && sp.length > 0) || (typeof sp === 'string' && sp.trim())) setSpecialProcessReq('Yes')
+    setActiveTab('general')
+    setSaveSuccess(true)
+    setTimeout(() => setSaveSuccess(false), 2500)
+  }
+
+  // Poll while any document is still being read by the AI (background task).
+  useEffect(() => {
+    if (isNew || !id) return
+    const anyPending =
+      documents.some((d) => d.extraction_status === 'pending') ||
+      docHistory.some((d) => d.extraction_status === 'pending')
+    if (!anyPending) return
+    let ticks = 0
+    const iv = setInterval(() => {
+      ticks += 1
+      reloadDocuments()
+      if (ticks >= 15) clearInterval(iv)
+    }, 4000)
+    return () => clearInterval(iv)
+  }, [documents, docHistory, id, isNew, reloadDocuments])
+
+  // ---- BOM component handlers ----
+  const reloadBom = () => { if (id && id !== 'new') listItemBom(id).then(setBomComponents).catch(() => setBomComponents([])) }
+  const handleAddBom = async () => {
+    if (isNew || !id) { setBomError('Save the item before adding components.'); return }
+    if (!bomCode.trim() && !bomName.trim()) { setBomError('Enter a component code or name.'); return }
+    setBomBusy(true); setBomError(null)
+    try {
+      await addItemBom(id, {
+        component_code: bomCode.trim() || undefined,
+        component_name: bomName.trim() || undefined,
+        quantity: bomQty.trim() ? parseFloat(bomQty) : undefined,
+        uom: bomUom.trim() || undefined,
+        level: bomLevel.trim() ? parseInt(bomLevel, 10) : undefined,
+      })
+      setBomCode(''); setBomName(''); setBomQty(''); setBomUom(''); setBomLevel('1'); setShowAddBom(false)
+      reloadBom()
+    } catch (err: any) { setBomError(err?.response?.data?.detail ?? 'Could not add component') }
+    finally { setBomBusy(false) }
+  }
+  const handleDeleteBom = async (linkId: string) => {
+    if (!id) return
+    try { await deleteItemBom(id, linkId); reloadBom() } catch { /* ignore */ }
+  }
+
+  // ---- Customer Part Map handlers ----
+  const reloadCpm = () => { if (id && id !== 'new') listItemCustomerParts(id).then(setCustomerParts).catch(() => setCustomerParts([])) }
+  const handleAddCpm = async () => {
+    if (isNew || !id) { setCpmError('Save the item before adding mappings.'); return }
+    if (!cpmPartNo.trim()) { setCpmError('Enter the customer part number.'); return }
+    if (!cpmCustomerId) { setCpmError('Select a customer.'); return }
+    setCpmBusy(true); setCpmError(null)
+    try {
+      await addItemCustomerPart(id, { customer_id: cpmCustomerId, customer_part_no: cpmPartNo.trim() })
+      setCpmCustomerId(''); setCpmPartNo(''); setShowAddCpm(false)
+      reloadCpm()
+    } catch (err: any) { setCpmError(err?.response?.data?.detail ?? 'Could not add mapping') }
+    finally { setCpmBusy(false) }
+  }
+  const handleDeleteCpm = async (linkId: string) => {
+    if (!id) return
+    try { await deleteItemCustomerPart(id, linkId); reloadCpm() } catch { /* ignore */ }
   }
 
   // ---------------------------------------------------------------------------
@@ -1020,10 +1168,12 @@ export function ItemDetailPage() {
         {/* ---- GENERAL INFORMATION ---------------------------------- */}
         {activeTab === 'general' && (
           <div className="flex flex-col gap-3">
-            {/* Row 1: 4-column grid */}
-            <div className="grid grid-cols-4 gap-3 items-start content-start">
+            {/* General tab: Basic Information, Product Classification and
+                Drawing & Revision. Costing (specifications, unit & pricing),
+                Stores (inventory), Quality and Suppliers each live in their own
+                module, so they are not shown here. */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-start content-start">
 
-              {/* Column 1 "" Basic Information */}
               <SectionCard
                 icon={<Info size={12} className="text-blue-500" />}
                 title="Basic Information"
@@ -1063,7 +1213,6 @@ export function ItemDetailPage() {
                 </FieldRow>
               </SectionCard>
 
-              {/* Column 2 "" Product Classification */}
               <SectionCard
                 icon={<Shield size={12} className="text-purple-500" />}
                 title="Product Classification"
@@ -1089,84 +1238,6 @@ export function ItemDetailPage() {
                 </FieldRow>
               </SectionCard>
 
-              {/* Column 3 "" Unit & Pricing */}
-              <SectionCard
-                icon={<CreditCard size={12} className="text-green-500" />}
-                title="Unit & Pricing"
-                color="bg-green-50"
-              >
-                <FieldRow label="Base UOM" required>
-                  <FieldSelect value={baseUom} onChange={setBaseUom} options={UOM_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Sales UOM" required>
-                  <FieldSelect value={salesUom} onChange={setSalesUom} options={UOM_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Purchase UOM" required>
-                  <FieldSelect value={purchaseUom} onChange={setPurchaseUom} options={UOM_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Conversion Factor">
-                  <FieldInput value={conversionFactor} onChange={setConversionFactor} placeholder="1.00" type="number" />
-                </FieldRow>
-                <FieldRow label="Standard Cost (‚¹)">
-                  <FieldInput value={standardCost} onChange={setStandardCost} placeholder="0.00" type="number" />
-                </FieldRow>
-                <FieldRow label="Last Purch. Price (‚¹)">
-                  <FieldInput value={lastPurchasePrice} onChange={setLastPurchasePrice} placeholder="0.00" type="number" />
-                </FieldRow>
-                <FieldRow label="Std Selling Price (‚¹)">
-                  <FieldInput value={standardSellingPrice} onChange={setStandardSellingPrice} placeholder="0.00" type="number" />
-                </FieldRow>
-                <FieldRow label="Price Control">
-                  <FieldSelect value={priceControl} onChange={setPriceControl} options={PRICE_CONTROL_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Costing Method">
-                  <FieldSelect value={costingMethod} onChange={setCostingMethod} options={COSTING_METHOD_OPTIONS} />
-                </FieldRow>
-              </SectionCard>
-
-              {/* Column 4 "" Inventory Information */}
-              <SectionCard
-                icon={<Boxes size={12} className="text-orange-500" />}
-                title="Inventory Information"
-                color="bg-orange-50"
-              >
-                <FieldRow label="Valuation Method">
-                  <FieldSelect value={valuationMethod} onChange={setValuationMethod} options={VALUATION_METHOD_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Moving Average">
-                  <FieldInput value={movingAverage} onChange={setMovingAverage} placeholder="0.00" type="number" />
-                </FieldRow>
-                <FieldRow label="Reorder Level">
-                  <FieldInput value={reorderLevel} onChange={setReorderLevel} placeholder="0" type="number" />
-                </FieldRow>
-                <FieldRow label="Max Stock Level">
-                  <FieldInput value={maxStockLevel} onChange={setMaxStockLevel} placeholder="0" type="number" />
-                </FieldRow>
-                <FieldRow label="Min Stock Level">
-                  <FieldInput value={minStockLevel} onChange={setMinStockLevel} placeholder="0" type="number" />
-                </FieldRow>
-                <FieldRow label="Lead Time (Days)">
-                  <FieldInput value={leadTime} onChange={setLeadTime} placeholder="0" type="number" />
-                </FieldRow>
-                <FieldRow label="Safety Stock">
-                  <FieldInput value={safetyStock} onChange={setSafetyStock} placeholder="0" type="number" />
-                </FieldRow>
-                <FieldRow label="Stock in Hand">
-                  <FieldInput value={stockInHand} onChange={setStockInHand} placeholder="0" type="number" disabled />
-                </FieldRow>
-                <FieldRow label="Stock in Transit">
-                  <FieldInput value={stockInTransit} onChange={setStockInTransit} placeholder="0" type="number" disabled />
-                </FieldRow>
-                <FieldRow label="Reserved Stock">
-                  <FieldInput value={reservedStock} onChange={setReservedStock} placeholder="0" type="number" disabled />
-                </FieldRow>
-              </SectionCard>
-            </div>
-
-            {/* Row 2: 4-column grid */}
-            <div className="grid grid-cols-4 gap-3 items-start content-start">
-
-              {/* Column 1 "" Drawing & Revision */}
               <SectionCard
                 icon={<FileText size={12} className="text-teal-500" />}
                 title="Drawing & Revision"
@@ -1187,252 +1258,7 @@ export function ItemDetailPage() {
                 <FieldRow label="Approved By">
                   <FieldInput value={approvedBy} onChange={setApprovedBy} placeholder="QA Manager" />
                 </FieldRow>
-                <div className="px-3 py-2">
-                  <button className="w-full px-3 py-1.5 text-xs font-medium text-[#005c87] border border-[#005c87] rounded hover:bg-[#005c87]/5 transition-colors flex items-center justify-center gap-1">
-                    <Eye size={12} /> View Drawing
-                  </button>
-                </div>
               </SectionCard>
-
-              {/* Column 2 "" Dimensional & Weight */}
-              <SectionCard
-                icon={<Ruler size={12} className="text-blue-500" />}
-                title="Dimensional & Weight"
-                color="bg-blue-50"
-              >
-                <FieldRow label="Length (mm)">
-                  <FieldInput value={length} onChange={setLength} placeholder="0.00" type="number" />
-                </FieldRow>
-                <FieldRow label="Width (mm)">
-                  <FieldInput value={width} onChange={setWidth} placeholder="0.00" type="number" />
-                </FieldRow>
-                <FieldRow label="Height (mm)">
-                  <FieldInput value={height} onChange={setHeight} placeholder="0.00" type="number" />
-                </FieldRow>
-                <FieldRow label="Net Weight (Kg)">
-                  <FieldInput value={netWeight} onChange={setNetWeight} placeholder="0.00" type="number" />
-                </FieldRow>
-                <FieldRow label="Gross Weight (Kg)">
-                  <FieldInput value={grossWeight} onChange={setGrossWeight} placeholder="0.00" type="number" />
-                </FieldRow>
-                <FieldRow label="Tolerance">
-                  <FieldInput value={tolerance} onChange={setTolerance} placeholder="±0.05mm" />
-                </FieldRow>
-              </SectionCard>
-
-              {/* Column 3 "" Quality & Certifications */}
-              <SectionCard
-                icon={<Award size={12} className="text-amber-500" />}
-                title="Quality & Certifications"
-                color="bg-amber-50"
-              >
-                <FieldRow label="AS9100 Applicable">
-                  <FieldSelect value={as9100Applicable} onChange={setAs9100Applicable} options={YES_NO_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="NADCAP Applicable">
-                  <FieldSelect value={nadcapApplicable} onChange={setNadcapApplicable} options={YES_NO_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Special Process Req.">
-                  <FieldSelect value={specialProcessReq} onChange={setSpecialProcessReq} options={YES_NO_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Anodizing (NADCAP)">
-                  <FieldInput value={anodizing} onChange={setAnodizing} placeholder="Type II, Class 1" />
-                </FieldRow>
-                <FieldRow label="Inspection Type">
-                  <FieldSelect value={inspectionType} onChange={setInspectionType} options={INSPECTION_TYPE_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Key Characteristics">
-                  <FieldInput value={keyCharacteristics} onChange={setKeyCharacteristics} placeholder="Critical dimensions..." />
-                </FieldRow>
-                <FieldRow label="First Article Insp. Req.">
-                  <FieldSelect value={firstArticleInspReq} onChange={setFirstArticleInspReq} options={YES_NO_OPTIONS} />
-                </FieldRow>
-              </SectionCard>
-
-              {/* Column 4 "" Default Accounts */}
-              <SectionCard
-                icon={<BarChart2 size={12} className="text-indigo-500" />}
-                title="Default Accounts"
-                color="bg-indigo-50"
-              >
-                <FieldRow label="Inventory Account">
-                  <FieldInput value={inventoryAccount} onChange={setInventoryAccount} placeholder="1310 - Inventory" />
-                </FieldRow>
-                <FieldRow label="COGS Account">
-                  <FieldInput value={cogsAccount} onChange={setCogsAccount} placeholder="5110 - COGS" />
-                </FieldRow>
-                <FieldRow label="Sales Account">
-                  <FieldInput value={salesAccount} onChange={setSalesAccount} placeholder="4110 - Sales" />
-                </FieldRow>
-                <FieldRow label="Purchase Account">
-                  <FieldInput value={purchaseAccount} onChange={setPurchaseAccount} placeholder="5210 - Purchase" />
-                </FieldRow>
-                <FieldRow label="Tax Code">
-                  <FieldSelect value={taxCode} onChange={setTaxCode} options={TAX_CODE_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Expense Account">
-                  <FieldInput value={expenseAccount} onChange={setExpenseAccount} placeholder="6110 - Expense" />
-                </FieldRow>
-              </SectionCard>
-            </div>
-
-            {/* Row 3: 3-column grid with varying widths */}
-            <div className="grid grid-cols-12 gap-3 items-start content-start">
-
-              {/* Documents - wider (6 cols) */}
-              <div className="col-span-6">
-                <SectionCard
-                  icon={<FileText size={12} className="text-amber-500" />}
-                  title="Documents"
-                  color="bg-amber-50"
-                >
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-3 py-2 text-left text-gray-500 font-medium">Document Type</th>
-                          <th className="px-3 py-2 text-left text-gray-500 font-medium">File Name</th>
-                          <th className="px-3 py-2 text-left text-gray-500 font-medium">Revision</th>
-                          <th className="px-3 py-2 text-left text-gray-500 font-medium">Uploaded On</th>
-                          <th className="px-3 py-2 text-left text-gray-500 font-medium">Uploaded By</th>
-                          <th className="px-3 py-2 text-center text-gray-500 font-medium">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {documents.length === 0 ? (
-                          <tr>
-                            <td colSpan={6} className="px-3 py-4 text-center text-gray-400">
-                              No documents uploaded
-                            </td>
-                          </tr>
-                        ) : (
-                          documents.map((doc) => (
-                            <tr key={doc.id} className="border-b border-gray-50 hover:bg-gray-50">
-                              <td className="px-3 py-2 text-gray-700">{doc.documentType}</td>
-                              <td className="px-3 py-2 text-blue-600">{doc.fileName}</td>
-                              <td className="px-3 py-2 text-gray-500">{doc.revision}</td>
-                              <td className="px-3 py-2 text-gray-500">{formatDate(doc.uploadedOn)}</td>
-                              <td className="px-3 py-2 text-gray-500">{doc.uploadedBy}</td>
-                              <td className="px-3 py-2">
-                                <div className="flex items-center justify-center gap-1">
-                                  <button className="p-1 text-gray-400 hover:text-[#005c87]" title="View">
-                                    <Eye size={12} />
-                                  </button>
-                                  <button className="p-1 text-gray-400 hover:text-[#005c87]" title="Download">
-                                    <Download size={12} />
-                                  </button>
-                                  <button className="p-1 text-gray-400 hover:text-red-500" title="Delete">
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="px-3 py-2 border-t border-gray-100">
-                    <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#005c87] border border-[#005c87] rounded hover:bg-[#005c87]/5 transition-colors">
-                      <Upload size={12} /> Upload Document
-                    </button>
-                  </div>
-                </SectionCard>
-              </div>
-
-              {/* Supplier Information (Primary) - 3 cols */}
-              <div className="col-span-3">
-                <SectionCard
-                  icon={<Truck size={12} className="text-teal-500" />}
-                  title="Supplier Information (Primary)"
-                  color="bg-teal-50"
-                >
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-2 py-2 text-left text-gray-500 font-medium">Supplier Code</th>
-                          <th className="px-2 py-2 text-left text-gray-500 font-medium">Supplier Name</th>
-                          <th className="px-2 py-2 text-left text-gray-500 font-medium">Supply Type</th>
-                          <th className="px-2 py-2 text-left text-gray-500 font-medium">Lead Time</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {suppliers.length === 0 ? (
-                          <tr>
-                            <td colSpan={4} className="px-2 py-4 text-center text-gray-400">
-                              No suppliers linked
-                            </td>
-                          </tr>
-                        ) : (
-                          suppliers.slice(0, 3).map((sup, idx) => (
-                            <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50">
-                              <td className="px-2 py-2 text-blue-600">{sup.supplierCode}</td>
-                              <td className="px-2 py-2 text-gray-700">{sup.supplierName}</td>
-                              <td className="px-2 py-2 text-gray-500">{sup.supplyType}</td>
-                              <td className="px-2 py-2 text-gray-500">{sup.leadTime} days</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="px-3 py-2 border-t border-gray-100">
-                    <button 
-                      onClick={() => setActiveTab('suppliers')}
-                      className="text-xs text-[#005c87] hover:underline flex items-center gap-1"
-                    >
-                      View All Suppliers <span>†'</span>
-                    </button>
-                  </div>
-                </SectionCard>
-              </div>
-
-              {/* Customer Part Mapping - 3 cols */}
-              <div className="col-span-3">
-                <SectionCard
-                  icon={<Users size={12} className="text-purple-500" />}
-                  title="Customer Part Mapping"
-                  color="bg-purple-50"
-                >
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-2 py-2 text-left text-gray-500 font-medium">Customer Code</th>
-                          <th className="px-2 py-2 text-left text-gray-500 font-medium">Customer Name</th>
-                          <th className="px-2 py-2 text-left text-gray-500 font-medium">Customer Part No.</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {customerPartMaps.length === 0 ? (
-                          <tr>
-                            <td colSpan={3} className="px-2 py-4 text-center text-gray-400">
-                              No mappings found
-                            </td>
-                          </tr>
-                        ) : (
-                          customerPartMaps.slice(0, 3).map((map, idx) => (
-                            <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50">
-                              <td className="px-2 py-2 text-blue-600">{map.customerCode}</td>
-                              <td className="px-2 py-2 text-gray-700">{map.customerName}</td>
-                              <td className="px-2 py-2 text-gray-500">{map.customerPartNo}</td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="px-3 py-2 border-t border-gray-100">
-                    <button 
-                      onClick={() => setActiveTab('customerPartMap')}
-                      className="text-xs text-[#005c87] hover:underline flex items-center gap-1"
-                    >
-                      View All Customer Mappings <span>†'</span>
-                    </button>
-                  </div>
-                </SectionCard>
-              </div>
             </div>
 
             {/* Save button */}
@@ -1451,56 +1277,6 @@ export function ItemDetailPage() {
                 {saving ? 'Saving...' : 'Save'}
               </button>
             </div>
-          </div>
-        )}
-
-        {/* ---- SPECIFICATIONS TAB ---------------------------------- */}
-        {activeTab === 'specifications' && (
-          <div className="grid grid-cols-3 gap-3 items-start content-start">
-            <SectionCard
-              icon={<Ruler size={12} className="text-blue-500" />}
-              title="Dimensional Specifications"
-              color="bg-blue-50"
-            >
-              <FieldRow label="Length (mm)">
-                <FieldInput value={length} onChange={setLength} placeholder="0.00" type="number" />
-              </FieldRow>
-              <FieldRow label="Width (mm)">
-                <FieldInput value={width} onChange={setWidth} placeholder="0.00" type="number" />
-              </FieldRow>
-              <FieldRow label="Height (mm)">
-                <FieldInput value={height} onChange={setHeight} placeholder="0.00" type="number" />
-              </FieldRow>
-              <FieldRow label="Tolerance">
-                <FieldInput value={tolerance} onChange={setTolerance} placeholder="±0.05mm" />
-              </FieldRow>
-            </SectionCard>
-
-            <SectionCard
-              icon={<Package size={12} className="text-green-500" />}
-              title="Weight Specifications"
-              color="bg-green-50"
-            >
-              <FieldRow label="Net Weight (Kg)">
-                <FieldInput value={netWeight} onChange={setNetWeight} placeholder="0.00" type="number" />
-              </FieldRow>
-              <FieldRow label="Gross Weight (Kg)">
-                <FieldInput value={grossWeight} onChange={setGrossWeight} placeholder="0.00" type="number" />
-              </FieldRow>
-            </SectionCard>
-
-            <SectionCard
-              icon={<Shield size={12} className="text-purple-500" />}
-              title="Material Specifications"
-              color="bg-purple-50"
-            >
-              <FieldRow label="Material Group">
-                <FieldSelect value={materialGroup} onChange={setMaterialGroup} options={MATERIAL_GROUP_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="Material">
-                <FieldSelect value={material} onChange={setMaterial} options={MATERIAL_OPTIONS} />
-              </FieldRow>
-            </SectionCard>
           </div>
         )}
 
@@ -1542,101 +1318,6 @@ export function ItemDetailPage() {
               </FieldRow>
               <FieldRow label="Country of Origin">
                 <FieldSelect value={countryOfOrigin} onChange={setCountryOfOrigin} options={COUNTRY_OPTIONS} />
-              </FieldRow>
-            </SectionCard>
-          </div>
-        )}
-
-        {/* ---- UNIT & PRICING TAB ---------------------------------- */}
-        {activeTab === 'unitPricing' && (
-          <div className="grid grid-cols-2 gap-3 items-start content-start">
-            <SectionCard
-              icon={<Package size={12} className="text-green-500" />}
-              title="Unit of Measure"
-              color="bg-green-50"
-            >
-              <FieldRow label="Base UOM" required>
-                <FieldSelect value={baseUom} onChange={setBaseUom} options={UOM_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="Sales UOM" required>
-                <FieldSelect value={salesUom} onChange={setSalesUom} options={UOM_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="Purchase UOM" required>
-                <FieldSelect value={purchaseUom} onChange={setPurchaseUom} options={UOM_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="Conversion Factor">
-                <FieldInput value={conversionFactor} onChange={setConversionFactor} placeholder="1.00" type="number" />
-              </FieldRow>
-            </SectionCard>
-
-            <SectionCard
-              icon={<CreditCard size={12} className="text-blue-500" />}
-              title="Pricing Information"
-              color="bg-blue-50"
-            >
-              <FieldRow label="Standard Cost (‚¹)">
-                <FieldInput value={standardCost} onChange={setStandardCost} placeholder="0.00" type="number" />
-              </FieldRow>
-              <FieldRow label="Last Purch. Price (‚¹)">
-                <FieldInput value={lastPurchasePrice} onChange={setLastPurchasePrice} placeholder="0.00" type="number" />
-              </FieldRow>
-              <FieldRow label="Std Selling Price (‚¹)">
-                <FieldInput value={standardSellingPrice} onChange={setStandardSellingPrice} placeholder="0.00" type="number" />
-              </FieldRow>
-              <FieldRow label="Price Control">
-                <FieldSelect value={priceControl} onChange={setPriceControl} options={PRICE_CONTROL_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="Costing Method">
-                <FieldSelect value={costingMethod} onChange={setCostingMethod} options={COSTING_METHOD_OPTIONS} />
-              </FieldRow>
-            </SectionCard>
-          </div>
-        )}
-
-        {/* ---- INVENTORY TAB ---------------------------------- */}
-        {activeTab === 'inventory' && (
-          <div className="grid grid-cols-2 gap-3 items-start content-start">
-            <SectionCard
-              icon={<Boxes size={12} className="text-orange-500" />}
-              title="Stock Levels"
-              color="bg-orange-50"
-            >
-              <FieldRow label="Reorder Level">
-                <FieldInput value={reorderLevel} onChange={setReorderLevel} placeholder="0" type="number" />
-              </FieldRow>
-              <FieldRow label="Max Stock Level">
-                <FieldInput value={maxStockLevel} onChange={setMaxStockLevel} placeholder="0" type="number" />
-              </FieldRow>
-              <FieldRow label="Min Stock Level">
-                <FieldInput value={minStockLevel} onChange={setMinStockLevel} placeholder="0" type="number" />
-              </FieldRow>
-              <FieldRow label="Safety Stock">
-                <FieldInput value={safetyStock} onChange={setSafetyStock} placeholder="0" type="number" />
-              </FieldRow>
-              <FieldRow label="Lead Time (Days)">
-                <FieldInput value={leadTime} onChange={setLeadTime} placeholder="0" type="number" />
-              </FieldRow>
-            </SectionCard>
-
-            <SectionCard
-              icon={<BarChart2 size={12} className="text-blue-500" />}
-              title="Current Stock"
-              color="bg-blue-50"
-            >
-              <FieldRow label="Stock in Hand">
-                <FieldInput value={stockInHand} onChange={setStockInHand} placeholder="0" type="number" disabled />
-              </FieldRow>
-              <FieldRow label="Stock in Transit">
-                <FieldInput value={stockInTransit} onChange={setStockInTransit} placeholder="0" type="number" disabled />
-              </FieldRow>
-              <FieldRow label="Reserved Stock">
-                <FieldInput value={reservedStock} onChange={setReservedStock} placeholder="0" type="number" disabled />
-              </FieldRow>
-              <FieldRow label="Valuation Method">
-                <FieldSelect value={valuationMethod} onChange={setValuationMethod} options={VALUATION_METHOD_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="Moving Average">
-                <FieldInput value={movingAverage} onChange={setMovingAverage} placeholder="0.00" type="number" disabled />
               </FieldRow>
             </SectionCard>
           </div>
@@ -1685,46 +1366,6 @@ export function ItemDetailPage() {
           </div>
         )}
 
-        {/* ---- QUALITY TAB ---------------------------------- */}
-        {activeTab === 'quality' && (
-          <div className="grid grid-cols-2 gap-3 items-start content-start">
-            <SectionCard
-              icon={<Award size={12} className="text-amber-500" />}
-              title="Quality Requirements"
-              color="bg-amber-50"
-            >
-              <FieldRow label="AS9100 Applicable">
-                <FieldSelect value={as9100Applicable} onChange={setAs9100Applicable} options={YES_NO_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="NADCAP Applicable">
-                <FieldSelect value={nadcapApplicable} onChange={setNadcapApplicable} options={YES_NO_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="Special Process Req.">
-                <FieldSelect value={specialProcessReq} onChange={setSpecialProcessReq} options={YES_NO_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="Anodizing (NADCAP)">
-                <FieldInput value={anodizing} onChange={setAnodizing} placeholder="Type II, Class 1" />
-              </FieldRow>
-            </SectionCard>
-
-            <SectionCard
-              icon={<Shield size={12} className="text-purple-500" />}
-              title="Inspection Requirements"
-              color="bg-purple-50"
-            >
-              <FieldRow label="Inspection Type">
-                <FieldSelect value={inspectionType} onChange={setInspectionType} options={INSPECTION_TYPE_OPTIONS} />
-              </FieldRow>
-              <FieldRow label="Key Characteristics">
-                <FieldInput value={keyCharacteristics} onChange={setKeyCharacteristics} placeholder="Critical dimensions..." />
-              </FieldRow>
-              <FieldRow label="First Article Insp. Req.">
-                <FieldSelect value={firstArticleInspReq} onChange={setFirstArticleInspReq} options={YES_NO_OPTIONS} />
-              </FieldRow>
-            </SectionCard>
-          </div>
-        )}
-
         {/* ---- DOCUMENTS TAB ---------------------------------- */}
         {activeTab === 'documents' && (
           <div className="bg-white rounded-lg border border-gray-200" style={{ alignSelf: 'start' }}>
@@ -1732,11 +1373,73 @@ export function ItemDetailPage() {
               <div className="flex items-center gap-2">
                 <FileText size={12} className="text-amber-500" />
                 <h3 className="text-xs font-semibold text-gray-700">Documents</h3>
+                <span className="text-[10px] text-gray-400">(current versions)</span>
               </div>
-              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#005c87] rounded hover:bg-[#004a6e] transition-colors">
+              <button
+                onClick={() => { setShowUploadDoc((v) => !v); setDocError(null) }}
+                disabled={isNew}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#005c87] rounded hover:bg-[#004a6e] transition-colors disabled:opacity-50"
+                title={isNew ? 'Save the item before uploading documents' : 'Upload a document'}
+              >
                 <Upload size={12} /> Upload Document
               </button>
             </div>
+
+            {showUploadDoc && !isNew && (
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-gray-500 font-medium">Document Type</label>
+                  <select
+                    value={uploadDocType}
+                    onChange={(e) => setUploadDocType(e.target.value)}
+                    className="px-2 py-1.5 text-xs border border-gray-300 rounded bg-white min-w-[150px]"
+                  >
+                    <option>Drawing</option>
+                    <option>STEP / 3D Model</option>
+                    <option>Certificate</option>
+                    <option>Specification</option>
+                    <option>Inspection</option>
+                    <option>PO</option>
+                    <option>Other</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-gray-500 font-medium">Revision</label>
+                  <input
+                    value={uploadDocRevision}
+                    onChange={(e) => setUploadDocRevision(e.target.value)}
+                    placeholder="Rev A"
+                    className="px-2 py-1.5 text-xs border border-gray-300 rounded bg-white w-24"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-gray-500 font-medium">Document No.</label>
+                  <input
+                    value={uploadDocNumber}
+                    onChange={(e) => setUploadDocNumber(e.target.value)}
+                    placeholder="Optional"
+                    className="px-2 py-1.5 text-xs border border-gray-300 rounded bg-white w-32"
+                  />
+                </div>
+                <input ref={docFileRef} type="file" className="hidden"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.xlsx,.dwg,.step,.stp"
+                  onChange={handleDocFileChange} />
+                <button
+                  onClick={() => docFileRef.current?.click()}
+                  disabled={docBusy}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  <Upload size={12} /> {docBusy ? 'Uploading…' : 'Choose File & Upload'}
+                </button>
+                <span className="text-[10px] text-gray-400 max-w-[280px]">
+                  A new file for an existing type supersedes the prior revision (kept in History).
+                </span>
+              </div>
+            )}
+            {docError && (
+              <div className="px-4 py-2 text-xs text-red-600 bg-red-50 border-b border-red-100">{docError}</div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -1745,105 +1448,101 @@ export function ItemDetailPage() {
                     <th className="px-3 py-2 text-left text-gray-500 font-medium">Document Type</th>
                     <th className="px-3 py-2 text-left text-gray-500 font-medium">File Name</th>
                     <th className="px-3 py-2 text-left text-gray-500 font-medium">Revision</th>
+                    <th className="px-3 py-2 text-left text-gray-500 font-medium">Version</th>
                     <th className="px-3 py-2 text-left text-gray-500 font-medium">Uploaded On</th>
                     <th className="px-3 py-2 text-left text-gray-500 font-medium">Uploaded By</th>
+                    <th className="px-3 py-2 text-center text-gray-500 font-medium">AI Read</th>
                     <th className="px-3 py-2 text-center text-gray-500 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {documents.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-3 py-6 text-center text-gray-400">
+                      <td colSpan={9} className="px-3 py-6 text-center text-gray-400">
                         No documents uploaded
                       </td>
                     </tr>
                   ) : (
                     documents.map((doc, idx) => (
-                      <tr key={doc.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <Fragment key={doc.id}>
+                      <tr className="border-b border-gray-50 hover:bg-gray-50">
                         <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
-                        <td className="px-3 py-2 text-gray-700">{doc.documentType}</td>
-                        <td className="px-3 py-2 text-blue-600">{doc.fileName}</td>
-                        <td className="px-3 py-2 text-gray-500">{doc.revision}</td>
-                        <td className="px-3 py-2 text-gray-500">{formatDate(doc.uploadedOn)}</td>
-                        <td className="px-3 py-2 text-gray-500">{doc.uploadedBy}</td>
+                        <td className="px-3 py-2 text-gray-700">{doc.document_type}</td>
+                        <td className="px-3 py-2">
+                          {doc.file_path ? (
+                            <a href={doc.file_path} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                              {doc.file_name || 'file'}
+                            </a>
+                          ) : (
+                            <span className="text-gray-500">{doc.file_name}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500">{doc.revision || '—'}</td>
+                        <td className="px-3 py-2 text-gray-500">v{doc.version_no}</td>
+                        <td className="px-3 py-2 text-gray-500">{formatDate(doc.uploaded_at || '')}</td>
+                        <td className="px-3 py-2 text-gray-500">{doc.uploaded_by || '—'}</td>
+                        <td className="px-3 py-2 text-center">
+                          {doc.extraction_status === 'pending' ? (
+                            <span className="text-amber-600 text-[11px]">Reading…</span>
+                          ) : doc.extraction_status === 'unsupported_file_type' ? (
+                            <span className="text-gray-400 text-[11px]" title="AI reading supports PDF only">—</span>
+                          ) : doc.extraction_status === 'failed' ? (
+                            <span className="text-red-500 text-[11px]" title="AI reading failed">Failed</span>
+                          ) : doc.extracted_fields ? (
+                            <button
+                              onClick={() => setExpandedDocId(expandedDocId === doc.id ? null : doc.id)}
+                              className="text-blue-600 text-[11px] font-medium hover:underline"
+                            >
+                              {expandedDocId === doc.id ? 'Hide' : 'Review AI'}
+                            </button>
+                          ) : (
+                            <span className="text-gray-300 text-[11px]">—</span>
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           <div className="flex items-center justify-center gap-2">
-                            <button className="p-1 text-gray-400 hover:text-[#005c87]" title="View">
-                              <Eye size={14} />
-                            </button>
-                            <button className="p-1 text-gray-400 hover:text-[#005c87]" title="Download">
-                              <Download size={14} />
-                            </button>
-                            <button className="p-1 text-gray-400 hover:text-red-500" title="Delete">
+                            {doc.file_path && (
+                              <a href={doc.file_path} target="_blank" rel="noreferrer" className="p-1 text-gray-400 hover:text-[#005c87]" title="Download">
+                                <Download size={14} />
+                              </a>
+                            )}
+                            <button onClick={() => handleDeleteDoc(doc.id)} className="p-1 text-gray-400 hover:text-red-500" title="Delete">
                               <Trash2 size={14} />
                             </button>
                           </div>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ---- SUPPLIERS TAB ---------------------------------- */}
-        {activeTab === 'suppliers' && (
-          <div className="bg-white rounded-lg border border-gray-200" style={{ alignSelf: 'start' }}>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-teal-50">
-              <div className="flex items-center gap-2">
-                <Truck size={12} className="text-teal-500" />
-                <h3 className="text-xs font-semibold text-gray-700">Approved Suppliers</h3>
-              </div>
-              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#005c87] rounded hover:bg-[#004a6e] transition-colors">
-                <Plus size={12} /> Add Supplier
-              </button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">S. No.</th>
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">Supplier Code</th>
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">Supplier Name</th>
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">Supply Type</th>
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">Lead Time (Days)</th>
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">Status</th>
-                    <th className="px-3 py-2 text-center text-gray-500 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {suppliers.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-3 py-6 text-center text-gray-400">
-                        No suppliers linked
-                      </td>
-                    </tr>
-                  ) : (
-                    suppliers.map((sup, idx) => (
-                      <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
-                        <td className="px-3 py-2 text-blue-600">{sup.supplierCode}</td>
-                        <td className="px-3 py-2 text-gray-700">{sup.supplierName}</td>
-                        <td className="px-3 py-2 text-gray-500">{sup.supplyType}</td>
-                        <td className="px-3 py-2 text-gray-500">{sup.leadTime}</td>
-                        <td className="px-3 py-2">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700">
-                            Approved
-                          </span>
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center justify-center gap-2">
-                            <button className="p-1 text-gray-400 hover:text-[#005c87]" title="View">
-                              <Eye size={14} />
-                            </button>
-                            <button className="p-1 text-gray-400 hover:text-red-500" title="Remove">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                      {expandedDocId === doc.id && doc.extracted_fields && (
+                        <tr className="bg-blue-50/40 border-b border-gray-100">
+                          <td colSpan={9} className="px-4 py-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[11px] font-semibold text-gray-600">AI-extracted fields — review, then apply</span>
+                              <button
+                                onClick={() => applyExtractedToForm(doc.extracted_fields)}
+                                className="px-2.5 py-1 text-[11px] font-medium text-white bg-emerald-600 rounded hover:bg-emerald-700"
+                              >
+                                Apply all to form
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 text-[11px]">
+                              {Object.entries(doc.extracted_fields)
+                                .filter(([k, val]: any) => k !== '_meta' && val && typeof val === 'object' && 'value' in val && val.value != null && typeof val.value !== 'object')
+                                .map(([k, val]: any) => (
+                                  <div key={k} className="flex justify-between gap-2">
+                                    <span className="text-gray-500 capitalize">{k.replace(/_/g, ' ')}</span>
+                                    <span className="text-gray-800 font-medium truncate" title={String(val.value)}>
+                                      {String(val.value)}{typeof val.confidence === 'number' ? ` (${Math.round(val.confidence * 100)}%)` : ''}
+                                    </span>
+                                  </div>
+                                ))}
+                            </div>
+                            {doc.extracted_fields?._meta?.model_used && (
+                              <div className="mt-2 text-[10px] text-gray-400">Model: {String(doc.extracted_fields._meta.model_used)}</div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     ))
                   )}
                 </tbody>
@@ -1860,10 +1559,53 @@ export function ItemDetailPage() {
                 <Users size={12} className="text-purple-500" />
                 <h3 className="text-xs font-semibold text-gray-700">Customer Part Mapping</h3>
               </div>
-              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#005c87] rounded hover:bg-[#004a6e] transition-colors">
+              <button
+                onClick={() => { setShowAddCpm((v) => !v); setCpmError(null) }}
+                disabled={isNew}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#005c87] rounded hover:bg-[#004a6e] transition-colors disabled:opacity-50"
+                title={isNew ? 'Save the item first' : 'Add a customer part mapping'}
+              >
                 <Plus size={12} /> Add Mapping
               </button>
             </div>
+
+            {showAddCpm && !isNew && (
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-gray-500 font-medium">Customer</label>
+                  <select
+                    value={cpmCustomerId}
+                    onChange={(e) => setCpmCustomerId(e.target.value)}
+                    className="px-2 py-1.5 text-xs border border-gray-300 rounded bg-white min-w-[220px]"
+                  >
+                    <option value="">- Select customer -</option>
+                    {customersList.map((c) => (
+                      <option key={c.id} value={c.id}>{c.customer_code} — {c.customer_name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-gray-500 font-medium">Customer Part No.</label>
+                  <input
+                    value={cpmPartNo}
+                    onChange={(e) => setCpmPartNo(e.target.value)}
+                    placeholder="e.g. 23-70-00006-00"
+                    className="px-2 py-1.5 text-xs border border-gray-300 rounded bg-white w-48"
+                  />
+                </div>
+                <button
+                  onClick={handleAddCpm}
+                  disabled={cpmBusy}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  <Plus size={12} /> {cpmBusy ? 'Adding…' : 'Add'}
+                </button>
+              </div>
+            )}
+            {cpmError && (
+              <div className="px-4 py-2 text-xs text-red-600 bg-red-50 border-b border-red-100">{cpmError}</div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -1877,30 +1619,25 @@ export function ItemDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {customerPartMaps.length === 0 ? (
+                  {customerParts.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-3 py-6 text-center text-gray-400">
                         No customer mappings found
                       </td>
                     </tr>
                   ) : (
-                    customerPartMaps.map((map, idx) => (
-                      <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50">
+                    customerParts.map((m, idx) => (
+                      <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50">
                         <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
-                        <td className="px-3 py-2 text-blue-600">{map.customerCode}</td>
-                        <td className="px-3 py-2 text-gray-700">{map.customerName}</td>
-                        <td className="px-3 py-2 text-gray-500">{map.customerPartNo}</td>
+                        <td className="px-3 py-2 text-blue-600">{m.customer_code || '—'}</td>
+                        <td className="px-3 py-2 text-gray-700">{m.customer_name || '—'}</td>
+                        <td className="px-3 py-2 text-gray-500">{m.customer_part_no || '—'}</td>
                         <td className="px-3 py-2">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700">
-                            Active
-                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700">Active</span>
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex items-center justify-center gap-2">
-                            <button className="p-1 text-gray-400 hover:text-[#005c87]" title="Edit">
-                              <Eye size={14} />
-                            </button>
-                            <button className="p-1 text-gray-400 hover:text-red-500" title="Remove">
+                            <button onClick={() => handleDeleteCpm(m.id)} className="p-1 text-gray-400 hover:text-red-500" title="Remove">
                               <Trash2 size={14} />
                             </button>
                           </div>
@@ -1922,10 +1659,56 @@ export function ItemDetailPage() {
                 <Link size={12} className="text-blue-500" />
                 <h3 className="text-xs font-semibold text-gray-700">Bill of Materials (BOM)</h3>
               </div>
-              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#005c87] rounded hover:bg-[#004a6e] transition-colors">
+              <button
+                onClick={() => { setShowAddBom((v) => !v); setBomError(null) }}
+                disabled={isNew}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#005c87] rounded hover:bg-[#004a6e] transition-colors disabled:opacity-50"
+                title={isNew ? 'Save the item first' : 'Add a BOM component'}
+              >
                 <Plus size={12} /> Add Component
               </button>
             </div>
+
+            {showAddBom && !isNew && (
+              <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-gray-500 font-medium">Component Code</label>
+                  <input value={bomCode} onChange={(e) => setBomCode(e.target.value)} placeholder="ITM-0002"
+                    className="px-2 py-1.5 text-xs border border-gray-300 rounded bg-white w-32" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-gray-500 font-medium">Component Name</label>
+                  <input value={bomName} onChange={(e) => setBomName(e.target.value)} placeholder="Component name"
+                    className="px-2 py-1.5 text-xs border border-gray-300 rounded bg-white w-44" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-gray-500 font-medium">Quantity</label>
+                  <input value={bomQty} onChange={(e) => setBomQty(e.target.value)} placeholder="1" type="number"
+                    className="px-2 py-1.5 text-xs border border-gray-300 rounded bg-white w-20" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-gray-500 font-medium">UOM</label>
+                  <input value={bomUom} onChange={(e) => setBomUom(e.target.value)} placeholder="Nos"
+                    className="px-2 py-1.5 text-xs border border-gray-300 rounded bg-white w-20" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-gray-500 font-medium">Level</label>
+                  <input value={bomLevel} onChange={(e) => setBomLevel(e.target.value)} placeholder="1" type="number"
+                    className="px-2 py-1.5 text-xs border border-gray-300 rounded bg-white w-16" />
+                </div>
+                <button
+                  onClick={handleAddBom}
+                  disabled={bomBusy}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  <Plus size={12} /> {bomBusy ? 'Adding…' : 'Add'}
+                </button>
+              </div>
+            )}
+            {bomError && (
+              <div className="px-4 py-2 text-xs text-red-600 bg-red-50 border-b border-red-100">{bomError}</div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -1940,11 +1723,31 @@ export function ItemDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td colSpan={7} className="px-3 py-6 text-center text-gray-400">
-                      No BOM components defined
-                    </td>
-                  </tr>
+                  {bomComponents.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-3 py-6 text-center text-gray-400">
+                        No BOM components defined
+                      </td>
+                    </tr>
+                  ) : (
+                    bomComponents.map((c, idx) => (
+                      <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
+                        <td className="px-3 py-2 text-blue-600">{c.component_code || '—'}</td>
+                        <td className="px-3 py-2 text-gray-700">{c.component_name || '—'}</td>
+                        <td className="px-3 py-2 text-gray-500">{c.quantity ?? '—'}</td>
+                        <td className="px-3 py-2 text-gray-500">{c.uom || '—'}</td>
+                        <td className="px-3 py-2 text-gray-500">{c.level ?? '—'}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center justify-center gap-2">
+                            <button onClick={() => handleDeleteBom(c.id)} className="p-1 text-gray-400 hover:text-red-500" title="Remove">
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1953,72 +1756,117 @@ export function ItemDetailPage() {
 
         {/* ---- HISTORY TAB ---------------------------------- */}
         {activeTab === 'history' && (
-          <div className="bg-white rounded-lg border border-gray-200" style={{ alignSelf: 'start' }}>
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
-              <History size={12} className="text-gray-500" />
-              <h3 className="text-xs font-semibold text-gray-700">Change History</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">Date/Time</th>
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">User</th>
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">Action</th>
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">Field Changed</th>
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">Old Value</th>
-                    <th className="px-3 py-2 text-left text-gray-500 font-medium">New Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isNew ? (
-                    <tr>
-                      <td colSpan={6} className="px-3 py-6 text-center text-gray-400">
-                        No history available for new items
-                      </td>
+          <div className="flex flex-col gap-3">
+            {/* Document Revision History (all versions, superseded retained) */}
+            <div className="bg-white rounded-lg border border-gray-200">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
+                <History size={12} className="text-gray-500" />
+                <h3 className="text-xs font-semibold text-gray-700">Document Revision History</h3>
+                <span className="text-[10px] text-gray-400">(all versions — superseded revisions retained)</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">Document Type</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">File Name</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">Revision</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">Version</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">Status</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">Uploaded On</th>
+                      <th className="px-3 py-2 text-left text-gray-500 font-medium">Uploaded By</th>
                     </tr>
+                  </thead>
+                  <tbody>
+                    {docHistory.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-3 py-6 text-center text-gray-400">
+                          No document revisions yet
+                        </td>
+                      </tr>
+                    ) : (
+                      docHistory.map((doc) => (
+                        <tr key={doc.id} className="border-b border-gray-50 hover:bg-gray-50">
+                          <td className="px-3 py-2 text-gray-700">{doc.document_type}</td>
+                          <td className="px-3 py-2">
+                            {doc.file_path ? (
+                              <a href={doc.file_path} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                                {doc.file_name || 'file'}
+                              </a>
+                            ) : (<span className="text-gray-500">{doc.file_name}</span>)}
+                          </td>
+                          <td className="px-3 py-2 text-gray-500">{doc.revision || '—'}</td>
+                          <td className="px-3 py-2 text-gray-500">v{doc.version_no}</td>
+                          <td className="px-3 py-2">
+                            {doc.is_current ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700">Current</span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500">Superseded</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-gray-500">{formatDate(doc.uploaded_at || '')}</td>
+                          <td className="px-3 py-2 text-gray-500">{doc.uploaded_by || '—'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Record Information + Recent Activity */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="bg-white rounded-lg border border-gray-200">
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-blue-50">
+                  <Info size={12} className="text-blue-500" />
+                  <h3 className="text-xs font-semibold text-gray-700">Record Information</h3>
+                </div>
+                <div className="p-4 space-y-2 text-xs">
+                  <div className="flex justify-between"><span className="text-gray-500">Status</span><span className="text-gray-700">{status || '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Documents (current)</span><span className="text-gray-700">{documents.length}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Total revisions</span><span className="text-gray-700">{docHistory.length}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Created</span><span className="text-gray-700">{createdAt ? formatDate(createdAt) : '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">Last Modified</span><span className="text-gray-700">{updatedAt ? formatDate(updatedAt) : '—'}</span></div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg border border-gray-200">
+                <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
+                  <History size={12} className="text-gray-500" />
+                  <h3 className="text-xs font-semibold text-gray-700">Recent Activity</h3>
+                </div>
+                <div className="p-4 space-y-2 text-xs">
+                  {isNew ? (
+                    <p className="text-gray-400">No activity for new items</p>
                   ) : (
                     <>
-                      <tr className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="px-3 py-2 text-gray-500">20/01/2024 14:45</td>
-                        <td className="px-3 py-2 text-gray-700">John Smith</td>
-                        <td className="px-3 py-2">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
-                            Updated
+                      {docHistory.slice(0, 6).map((doc) => (
+                        <div key={doc.id} className="flex justify-between gap-3">
+                          <span className="text-gray-700">
+                            {doc.is_current ? 'Uploaded' : 'Superseded'} {doc.document_type} rev {doc.revision || '—'} (v{doc.version_no})
                           </span>
-                        </td>
-                        <td className="px-3 py-2 text-gray-500">Standard Cost</td>
-                        <td className="px-3 py-2 text-gray-400">‚¹4,200.00</td>
-                        <td className="px-3 py-2 text-gray-700">‚¹4,500.00</td>
-                      </tr>
-                      <tr className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="px-3 py-2 text-gray-500">15/01/2024 10:30</td>
-                        <td className="px-3 py-2 text-gray-700">Sarah Wilson</td>
-                        <td className="px-3 py-2">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
-                            Updated
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-gray-500">Drawing Revision</td>
-                        <td className="px-3 py-2 text-gray-400">Rev C</td>
-                        <td className="px-3 py-2 text-gray-700">Rev D</td>
-                      </tr>
-                      <tr className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="px-3 py-2 text-gray-500">15/06/2023 10:30</td>
-                        <td className="px-3 py-2 text-gray-700">Admin</td>
-                        <td className="px-3 py-2">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700">
-                            Created
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-gray-500">-</td>
-                        <td className="px-3 py-2 text-gray-400">-</td>
-                        <td className="px-3 py-2 text-gray-700">Initial creation</td>
-                      </tr>
+                          <span className="text-gray-400 whitespace-nowrap">{formatDate(doc.uploaded_at || '')}</span>
+                        </div>
+                      ))}
+                      {updatedAt && (
+                        <div className="flex justify-between gap-3">
+                          <span className="text-gray-700">Record last modified</span>
+                          <span className="text-gray-400 whitespace-nowrap">{formatDate(updatedAt)}</span>
+                        </div>
+                      )}
+                      {createdAt && (
+                        <div className="flex justify-between gap-3">
+                          <span className="text-gray-700">Record created</span>
+                          <span className="text-gray-400 whitespace-nowrap">{formatDate(createdAt)}</span>
+                        </div>
+                      )}
+                      {docHistory.length === 0 && !updatedAt && !createdAt && (
+                        <p className="text-gray-400">No activity recorded</p>
+                      )}
                     </>
                   )}
-                </tbody>
-              </table>
+                </div>
+              </div>
             </div>
           </div>
         )}

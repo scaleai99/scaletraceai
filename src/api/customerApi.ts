@@ -35,15 +35,42 @@ export interface CustomerQualityRequirement {
   record_retention_years: number
 }
 
+export interface AiExtractedField { value: string | number | null; confidence: number }
+export interface AiExtractedFields {
+  primary?: Record<string, AiExtractedField>
+  secondary_drawing_fields?: Record<string, AiExtractedField> | null
+}
+
 export interface CustomerDocument {
   id: string
   customer_id: string
   document_type: string | null
+  doc_number: string | null
+  revision: string | null
+  issue_date: string | null
+  expiry_date: string | null
+  issuing_authority: string | null
+  status: string | null
+  category: string | null
   file_name: string | null
   file_path: string | null
   file_size_bytes: number | null
   uploaded_by: string | null
   uploaded_at: string | null
+  extraction_status?: string | null
+  ai_extraction_id?: string | null
+  extracted_fields?: AiExtractedFields | null
+}
+
+export interface CustomerDocumentCreate {
+  document_type: string
+  doc_number?: string
+  revision?: string
+  issue_date?: string
+  expiry_date?: string
+  issuing_authority?: string
+  status?: string
+  category?: string
 }
 
 export interface Customer {
@@ -134,6 +161,7 @@ export interface Customer {
   overall_rating: number | null
   rating_date: string | null
   rating_remarks: string | null
+  notes: string | null
 
   // Workflow
   status: string
@@ -223,6 +251,7 @@ export interface CustomerCreatePayload {
   overall_rating?: number
   rating_date?: string
   rating_remarks?: string
+  notes?: string
 }
 
 export type CustomerUpdatePayload = Partial<Omit<CustomerCreatePayload, 'customer_code'>>
@@ -270,7 +299,7 @@ export interface CustomerQualityRequirementPayload {
  */
 export async function listCustomers(params: CustomerListParams = {}): Promise<Customer[]> {
   const { data } = await apiClient.get<Customer[]>(BASE, { params })
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 /**
@@ -334,7 +363,7 @@ export async function deleteCustomerSite(customerId: string, siteId: string): Pr
  */
 export async function listCustomerSites(customerId: string): Promise<CustomerSite[]> {
   const { data } = await apiClient.get<CustomerSite[]>(`${BASE}/${customerId}/sites`)
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 /**
@@ -369,7 +398,7 @@ export interface CustomerContactCreatePayload {
 
 export async function listCustomerContacts(customerId: string): Promise<CustomerContact[]> {
   const { data } = await apiClient.get<CustomerContact[]>(`${BASE}/${customerId}/contacts`)
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 export async function addCustomerContact(customerId: string, payload: CustomerContactCreatePayload): Promise<CustomerContact> {
@@ -411,6 +440,34 @@ export async function uploadCustomerDocument(
   const { data } = await apiClient.post<CustomerDocument>(`${BASE}/${customerId}/documents`, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
+  return data
+}
+
+export async function listCustomerDocuments(customerId: string): Promise<CustomerDocument[]> {
+  const { data } = await apiClient.get<CustomerDocument[]>(`${BASE}/${customerId}/documents`)
+  return data
+}
+
+export async function deleteCustomerDocument(customerId: string, docId: string): Promise<void> {
+  await apiClient.delete(`${BASE}/${customerId}/documents/${docId}`)
+}
+
+export async function createCustomerDocument(customerId: string, body: CustomerDocumentCreate): Promise<CustomerDocument> {
+  const { data } = await apiClient.post<CustomerDocument>(`${BASE}/${customerId}/documents/meta`, body)
+  return data
+}
+
+export async function uploadCustomerDocumentFile(customerId: string, docId: string, file: File): Promise<CustomerDocument> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await apiClient.post<CustomerDocument>(`${BASE}/${customerId}/documents/${docId}/upload`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return data
+}
+
+export async function updateCustomerDocument(customerId: string, docId: string, body: Partial<CustomerDocumentCreate>): Promise<CustomerDocument> {
+  const { data } = await apiClient.patch<CustomerDocument>(`${BASE}/${customerId}/documents/${docId}`, body)
   return data
 }
 

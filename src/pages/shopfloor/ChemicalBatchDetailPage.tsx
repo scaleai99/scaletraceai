@@ -1,7 +1,8 @@
 /**
  * ChemicalBatchDetailPage.tsx - Shop Floor - Special Process, Phase 1
  * (Chemical Control). Router-reused for /shopfloor/chemical-batches/new
- * and /shopfloor/chemical-batches/:id.
+ * and /shopfloor/chemical-batches/:id - see resetForm below, which clears
+ * every field when navigating to "new" (CLAUDE.md rule 3).
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -46,6 +47,7 @@ export function ChemicalBatchDetailPage() {
   const [lotLookupError, setLotLookupError] = useState<string | null>(null)
   const [lotLookupLoading, setLotLookupLoading] = useState(false)
 
+  // ---- Populate form from a loaded record ----
   const populateForm = useCallback((b: ChemicalBatch) => {
     setChemicalName(b.chemical_name)
     setProcessRef(b.process_ref ?? '')
@@ -54,15 +56,19 @@ export function ChemicalBatchDetailPage() {
     setQcNotes('')
   }, [])
 
+  // ---- Reset form (New Chemical Batch) ----
   const resetForm = useCallback(() => {
     setBatch(null)
     setChemicalName(''); setProcessRef(''); setConcentrationPct(''); setCocNumber(''); setQcNotes('')
     setItemCode(''); setLotOptions([]); setSelectedLotId(''); setLotLookupError(null)
     setLoading(false); setLoadError(null); setSaveError(null); setSaveSuccess(false)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => { if (isNew) resetForm() }, [id, isNew, resetForm])
+  // Reset when navigating to /new
+  useEffect(() => { if (isNew) resetForm() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ---- Load existing record ----
   useEffect(() => {
     if (isNew || !id) return
     setLoading(true)
@@ -76,6 +82,7 @@ export function ChemicalBatchDetailPage() {
       .finally(() => setLoading(false))
   }, [id, isNew, populateForm])
 
+  // ---- Lot lookup (create only) ----
   const handleLookupLots = async () => {
     if (!itemCode.trim()) return
     setLotLookupLoading(true)
@@ -84,8 +91,8 @@ export function ChemicalBatchDetailPage() {
     setSelectedLotId('')
     try {
       const lots = await listStockLotsForItem(itemCode.trim())
-      setLotOptions(lots ?? [])
-      if ((lots ?? []).length === 0) setLotLookupError(`No active stock lots found for item '${itemCode.trim()}'.`)
+      setLotOptions(lots)
+      if (lots.length === 0) setLotLookupError(`No active stock lots found for item '${itemCode.trim()}'.`)
     } catch (err: unknown) {
       const axErr = err as { response?: { data?: { detail?: string } } }
       setLotLookupError(axErr?.response?.data?.detail ?? 'Lot lookup failed')
@@ -94,6 +101,7 @@ export function ChemicalBatchDetailPage() {
     }
   }
 
+  // ---- Discard changes ----
   const handleDiscard = async () => {
     if (isNew) { resetForm(); setSaveError(null); return }
     if (!id) return
@@ -107,6 +115,7 @@ export function ChemicalBatchDetailPage() {
     }
   }
 
+  // ---- Save ----
   const handleSave = async () => {
     const errs: string[] = []
     if (isNew && !selectedLotId) errs.push('A stock lot must be selected')
@@ -152,6 +161,7 @@ export function ChemicalBatchDetailPage() {
     }
   }
 
+  // ---- QC release / reject ----
   const handleQcAction = async (status: 'Released' | 'Rejected') => {
     if (!id || isNew) return
     setActionLoading(true)
@@ -166,6 +176,7 @@ export function ChemicalBatchDetailPage() {
     }
   }
 
+  // ---- CoC file upload ----
   const handleCocUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !id || isNew) return
@@ -182,6 +193,7 @@ export function ChemicalBatchDetailPage() {
     }
   }
 
+  // ---- Soft delete ----
   const handleDelete = async () => {
     if (!id || isNew || !window.confirm(`Delete chemical batch '${chemicalName}'?\n\nThis cannot be undone.`)) return
     setActionLoading(true)
@@ -197,7 +209,7 @@ export function ChemicalBatchDetailPage() {
   }
 
   if (loading) {
-    return <div className="w-full px-4 py-8 text-center text-sm text-gray-400">Loading...</div>
+    return <div className="w-full px-4 py-8 text-center text-sm text-gray-400">Loading…</div>
   }
   if (loadError) {
     return (
@@ -244,8 +256,8 @@ export function ChemicalBatchDetailPage() {
             </div>
             {batch && (
               <div className="text-xs text-gray-500 mt-0.5">
-                Lot {batch.lot_number} - Item {batch.item_code}
-                {batch.expiry_date && ` - Expires ${batch.expiry_date}`}
+                Lot {batch.lot_number} · Item {batch.item_code}
+                {batch.expiry_date && ` · Expires ${batch.expiry_date}`}
               </div>
             )}
           </div>
@@ -286,7 +298,7 @@ export function ChemicalBatchDetailPage() {
                 />
               </div>
               <Button variant="secondary" size="sm" onClick={handleLookupLots} disabled={lotLookupLoading || !itemCode.trim()}>
-                {lotLookupLoading ? 'Looking up...' : 'Find Lots'}
+                {lotLookupLoading ? 'Looking up…' : 'Find Lots'}
               </Button>
             </div>
             {lotLookupError && <p className="text-xs text-red-600">{lotLookupError}</p>}
@@ -295,7 +307,7 @@ export function ChemicalBatchDetailPage() {
                 label="Stock Lot"
                 required
                 options={lotOptionsForSelect}
-                placeholder="Select a lot..."
+                placeholder="Select a lot…"
                 value={selectedLotId}
                 onChange={(e) => setSelectedLotId(e.target.value)}
               />

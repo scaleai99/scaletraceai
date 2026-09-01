@@ -11,7 +11,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Loader2, Sparkles, CheckCircle } from 'lucide-react'
-import axios from 'axios'
+import { apiClient } from '../../api/axiosClient'
 import {
   StateMachineBadge,
   Button,
@@ -55,7 +55,7 @@ interface FAIRDetail {
   created_at: string
 }
 
-const FAIR_BASE = '/api/v1/fai'
+const FAIR_BASE = '/api/v1/fairs'
 
 // ---------------------------------------------------------------------------
 // Tab component
@@ -111,7 +111,7 @@ function Form1({ fair, isDraft, onSaved }: Form1Props) {
     setError(null)
     setSaved(false)
     try {
-      const { data } = await axios.patch<FAIRDetail>(`${FAIR_BASE}/${fair.id}`, {
+      const { data } = await apiClient.patch<FAIRDetail>(`${FAIR_BASE}/${fair.id}`, {
         part_number: partNumber || null,
         drawing_number: drawingNumber || null,
         drawing_revision: drawingRevision || null,
@@ -304,7 +304,7 @@ export function FAIRDetailPage() {
   const fetchFAIR = useCallback(() => {
     if (!id) return
     setLoading(true)
-    axios
+    apiClient
       .get<FAIRDetail>(`${FAIR_BASE}/${id}`)
       .then(({ data }) => setFair(data))
       .catch((err) => setError(err?.response?.data?.detail ?? 'Failed to load FAIR'))
@@ -320,7 +320,7 @@ export function FAIRDetailPage() {
     setApproving(true)
     setApproveError(null)
     try {
-      const { data } = await axios.post<FAIRDetail>(`${FAIR_BASE}/${fair.id}/approve`)
+      const { data } = await apiClient.post<FAIRDetail>(`${FAIR_BASE}/${fair.id}/approve`)
       setFair(data)
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } }; message?: string }
@@ -335,7 +335,7 @@ export function FAIRDetailPage() {
     setAiLoading(true)
     setAiError(null)
     try {
-      const { data } = await axios.post<FAIRDetail>(`${FAIR_BASE}/${fair.id}/ai-populate`)
+      const { data } = await apiClient.post<FAIRDetail>(`${FAIR_BASE}/${fair.id}/ai-populate`)
       setFair(data)
     } catch (err: unknown) {
       const e = err as { response?: { data?: { detail?: string } }; message?: string }

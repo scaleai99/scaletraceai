@@ -27,7 +27,7 @@ export function WhatsAppLogPage() {
     try {
       setRows(await listWhatsAppLog())
     } catch {
-      setRows([])
+      setError('Could not load delivery log.')
     } finally {
       setLoading(false)
     }

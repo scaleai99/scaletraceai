@@ -6,7 +6,7 @@ export function CycleCountPage() {
   const [rows, setRows] = useState<CycleCount[]>([])
   const [err, setErr] = useState('')
   const [f, setF] = useState({ item_code: '', bin_code: '', system_qty: 0, counted_qty: 0, count_date: '', notes: '' })
-  const load = useCallback(() => { listCounts().then(setRows).catch(() => setRows([])) }, [])
+  const load = useCallback(() => { listCounts().then(setRows).catch(e => setErr(String(e))) }, [])
   useEffect(() => { load() }, [load])
   const add = async () => { setErr(''); try { await createCount(f); setF({ item_code: '', bin_code: '', system_qty: 0, counted_qty: 0, count_date: '', notes: '' }); load() } catch (e: any) { setErr(e?.response?.data?.detail || String(e)) } }
   const adjust = async (id: string) => { await adjustCount(id); load() }

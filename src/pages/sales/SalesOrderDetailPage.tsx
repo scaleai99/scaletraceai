@@ -293,7 +293,7 @@ export function SalesOrderDetailPage() {
           </div>
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wide">Customer</p>
-            <p className="text-gray-900 mt-0.5 font-mono text-xs">{so.customer_id}</p>
+            <p className="text-gray-900 mt-0.5">{so.customer_name ?? <span className="font-mono text-xs">{so.customer_id}</span>}</p>
           </div>
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wide">Total Value</p>

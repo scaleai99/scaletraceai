@@ -4,6 +4,7 @@ import { AuthGuard } from './components/layout/AuthGuard'
 import { LoginPage } from './pages/LoginPage'
 import { StubPage } from './pages/StubPage'
 import { ManagementDashboardPage } from './pages/dashboard/ManagementDashboardPage'
+import { AuditTrailPage } from './pages/audit/AuditTrailPage'
 import { DomainDashboardPage } from './pages/dashboard/DomainDashboardPage'
 
 // """ Finance " GSTR (Module 24) """"""""""""""""""""""""""""""""""""""""""
@@ -11,6 +12,10 @@ import { GSTRExportPage } from './pages/finance/GSTRExportPage'
 
 // """ Quality " Calibration (Module 21) """""""""""""""""""""""""""""""""""
 import { CalibrationPage } from './pages/quality/CalibrationPage'
+
+// Shop Floor - Special Process (Phase 1: Chemical Control)
+import { ChemicalBatchListPage } from './pages/shopfloor/ChemicalBatchListPage'
+import { ChemicalBatchDetailPage } from './pages/shopfloor/ChemicalBatchDetailPage'
 
 // """ Quality " QMS Dashboard """""""""""""""""""""""""""""""""""""""""""""""
 import { QMSDashboardPage } from './pages/quality/QMSDashboardPage'
@@ -69,6 +74,7 @@ import { CompanyMasterPage } from './pages/masters/CompanyMasterPage'
 // """ Masters " Part Master (Module 05) """""""""""""""""""""""""""""""""""
 import { ItemListPage } from './pages/masters/ItemListPage'
 import { ItemDetailPage } from './pages/masters/ItemDetailPage'
+import { SpecificationMasterPage } from './pages/masters/SpecificationMasterPage'
 
 // """ Quality (Modules 20, 21, 22, 30) """"""""""""""""""""""""""""""""""""
 import { NCRListPage } from './pages/quality/NCRListPage'
@@ -123,13 +129,6 @@ import { SurfaceTreatmentPage } from './pages/quality/SurfaceTreatmentPage'     
 import { ManpowerPlanningPage } from './pages/production/ManpowerPlanningPage'       // Module 16 gap
 import { WhatsAppLogPage } from './pages/finance/WhatsAppLogPage'                    // Module 34 gap
 
-// """ Shop Floor - Special Process (Phase 1: Chemical Control) """"""""""""
-import { ChemicalBatchListPage } from './pages/shopfloor/ChemicalBatchListPage'
-import { ChemicalBatchDetailPage } from './pages/shopfloor/ChemicalBatchDetailPage'
-
-// """ Masters - Specification Master """"""""""""""""""""""""""""""""""""""
-import { SpecificationMasterPage } from './pages/masters/SpecificationMasterPage'
-
 
 // Wrapper to force remount when customer id changes
 function CustomerDetailPageWrapper() {
@@ -152,6 +151,7 @@ export default function App() {
 
           {/* Module 27 - Management Dashboard */}
           <Route path="dashboard" element={<ManagementDashboardPage />} />
+          <Route path="audit-trail" element={<AuditTrailPage />} />
           <Route path="dashboards/:domain" element={<DomainDashboardPage />} />
 
           {/* """ Masters """"""""""""""""""""""""""""""""""""""""""" */}
@@ -176,7 +176,6 @@ export default function App() {
           <Route path="masters/step" element={<StepUploadPage />} />
           {/* Module 09 gap - Tooling Master */}
           <Route path="masters/tooling" element={<ToolingMasterPage />} />
-          {/* Specification Master */}
           <Route path="masters/specifications" element={<SpecificationMasterPage />} />
           {/* Module 34 gap - Exchange Rates */}
           <Route path="masters/exchange-rates" element={<ExchangeRatePage />} />
@@ -247,7 +246,9 @@ export default function App() {
           <Route path="production/work-orders" element={<WorkOrderPage />} />
           <Route path="production/work-orders/:id" element={<WorkOrderDetailPage />} />
 
-          {/* """ Shop Floor - Special Process """"""""""""""""""""""" */}
+          {/* Shop Floor - Special Process (in-house; distinct from
+              quality/special-processes [outsourced NADCAP] and
+              quality/surface-treatment [AI drawing analysis]) */}
           {/* Phase 1 - Chemical Control */}
           <Route path="shopfloor/chemical-batches" element={<ChemicalBatchListPage />} />
           <Route path="shopfloor/chemical-batches/:id" element={<ChemicalBatchDetailPage />} />

@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { Plus, RefreshCw } from 'lucide-react'
-import { Button, Input, Badge } from '../../components/ui'
+import { Button, Input, Badge, SupplierPicker } from '../../components/ui'
 import { formatDate } from '../../lib/utils'
 import { listSCARs, createSCAR, transitionSCAR, SCAR } from '../../api/scarApi'
 
@@ -34,6 +34,7 @@ export function SCARPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [supplierId, setSupplierId] = useState<string | null>(null)
   const [part, setPart] = useState('')
   const [lot, setLot] = useState('')
   const [desc, setDesc] = useState('')
@@ -45,7 +46,7 @@ export function SCARPage() {
     try {
       setScars(await listSCARs())
     } catch {
-      setScars([])
+      setError('Could not load SCARs.')
     } finally {
       setLoading(false)
     }
@@ -59,11 +60,13 @@ export function SCARPage() {
     setError(null)
     try {
       await createSCAR({
+        supplier_id: supplierId || undefined,
         part_number: part || undefined,
         lot_number: lot || undefined,
         nonconformance_desc: desc || undefined,
         qty_affected: qty ? Number(qty) : undefined,
       })
+      setSupplierId(null)
       setPart('')
       setLot('')
       setDesc('')
@@ -95,7 +98,8 @@ export function SCARPage() {
 
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
         <h2 className="text-sm font-semibold text-gray-700 mb-3">Issue SCAR</h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <SupplierPicker label="Supplier" value={supplierId} onChange={(id) => setSupplierId(id)} />
           <Input label="Part Number" value={part} onChange={(e) => setPart(e.target.value)} />
           <Input label="Lot Number" value={lot} onChange={(e) => setLot(e.target.value)} />
           <Input label="Qty Affected" type="number" value={qty} onChange={(e) => setQty(e.target.value)} />
@@ -113,6 +117,7 @@ export function SCARPage() {
           <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
             <tr>
               <th className="px-4 py-2 text-left">SCAR</th>
+              <th className="px-4 py-2 text-left">Supplier</th>
               <th className="px-4 py-2 text-left">Part</th>
               <th className="px-4 py-2 text-left">Issued</th>
               <th className="px-4 py-2 text-left">Due</th>
@@ -122,14 +127,15 @@ export function SCARPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400 animate-pulse">Loading"¦</td></tr>
+              <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400 animate-pulse">Loading"¦</td></tr>
             ) : scars.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400">No SCARs yet.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">No SCARs yet.</td></tr>
             ) : (
               scars.map((s) => (
                 <tr key={s.id} className="border-t border-gray-100">
                   <td className="px-4 py-2 font-mono text-xs font-semibold text-amber-700">{s.scar_number}</td>
-                  <td className="px-4 py-2">{s.part_number ?? '""'}</td>
+                  <td className="px-4 py-2 text-gray-700">{s.supplier_name ?? '\u2014'}</td>
+                  <td className="px-4 py-2">{s.part_number ?? '\u2014'}</td>
                   <td className="px-4 py-2">{formatDate(s.issued_date)}</td>
                   <td className="px-4 py-2">
                     {formatDate(s.response_due_date)}

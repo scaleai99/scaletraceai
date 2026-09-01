@@ -58,7 +58,7 @@ export interface HRDashboard {
 }
 
 export const listEmployees = (params?: Record<string, unknown>) =>
-  apiClient.get<Employee[]>('/api/v1/hr/employees', { params }).then(r => Array.isArray(r.data) ? r.data : [])
+  apiClient.get<Employee[]>('/api/v1/hr/employees', { params }).then(r => r.data)
 
 export const getEmployee = (id: string) =>
   apiClient.get<Employee>(`/api/v1/hr/employees/${id}`).then(r => r.data)
@@ -70,19 +70,19 @@ export const updateEmployee = (id: string, data: Partial<Employee>) =>
   apiClient.patch<Employee>(`/api/v1/hr/employees/${id}`, data).then(r => r.data)
 
 export const listCompetencies = (employeeId: string) =>
-  apiClient.get<EmployeeCompetency[]>(`/api/v1/hr/employees/${employeeId}/competencies`).then(r => Array.isArray(r.data) ? r.data : [])
+  apiClient.get<EmployeeCompetency[]>(`/api/v1/hr/employees/${employeeId}/competencies`).then(r => r.data)
 
 export const addCompetency = (employeeId: string, data: Partial<EmployeeCompetency>) =>
   apiClient.post<EmployeeCompetency>(`/api/v1/hr/employees/${employeeId}/competencies`, data).then(r => r.data)
 
 export const listTraining = (employeeId: string) =>
-  apiClient.get<TrainingRecord[]>(`/api/v1/hr/employees/${employeeId}/training`).then(r => Array.isArray(r.data) ? r.data : [])
+  apiClient.get<TrainingRecord[]>(`/api/v1/hr/employees/${employeeId}/training`).then(r => r.data)
 
 export const addTraining = (employeeId: string, data: Partial<TrainingRecord>) =>
   apiClient.post<TrainingRecord>(`/api/v1/hr/employees/${employeeId}/training`, data).then(r => r.data)
 
 export const listAttendance = (employeeId: string) =>
-  apiClient.get<AttendanceRecord[]>(`/api/v1/hr/employees/${employeeId}/attendance`).then(r => Array.isArray(r.data) ? r.data : [])
+  apiClient.get<AttendanceRecord[]>(`/api/v1/hr/employees/${employeeId}/attendance`).then(r => r.data)
 
 export const markAttendance = (employeeId: string, data: Partial<AttendanceRecord>) =>
   apiClient.post<AttendanceRecord>(`/api/v1/hr/employees/${employeeId}/attendance`, data).then(r => r.data)

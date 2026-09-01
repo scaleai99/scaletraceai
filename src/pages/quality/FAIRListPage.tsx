@@ -12,7 +12,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, RefreshCw } from 'lucide-react'
-import axios from 'axios'
+import { apiClient } from '../../api/axiosClient'
 import {
   Table,
   Column,
@@ -42,7 +42,7 @@ interface FAIR {
 
 type FAIRRow = FAIR & Record<string, unknown>
 
-const FAIR_BASE = '/api/v1/fai'
+const FAIR_BASE = '/api/v1/fairs'
 
 // ---------------------------------------------------------------------------
 // Column definitions
@@ -129,7 +129,7 @@ function NewFAIRModal({ onCreated, onClose }: NewFAIRModalProps) {
     setLoading(true)
     setError(null)
     try {
-      await axios.post(FAIR_BASE + '/', {
+      await apiClient.post(FAIR_BASE + '/', {
         so_id: soId || null,
         part_number: partNumber || null,
         drawing_number: drawingNumber || null,
@@ -200,7 +200,7 @@ export function FAIRListPage() {
     () => {
       const params: Record<string, string> = {}
       if (statusFilter) params.status = statusFilter
-      return axios.get<FAIRRow[]>(FAIR_BASE + '/', { params }).then(({ data }) => data)
+      return apiClient.get<FAIRRow[]>(FAIR_BASE + '/', { params }).then(({ data }) => data)
     },
     DEMO_FAIRS_INLINE,
     [statusFilter],

@@ -192,7 +192,7 @@ export function ProductionPlanningPage() {
     refetchMPS()
     setLoadingChart(true)
     getMachineLoading()
-      .then(d => setMachineLoading(Array.isArray(d) ? d : []))
+      .then(setMachineLoading)
       .catch(() => setMachineLoading([]))
       .finally(() => setLoadingChart(false))
   }
@@ -200,7 +200,7 @@ export function ProductionPlanningPage() {
   useEffect(() => {
     setLoadingChart(true)
     getMachineLoading()
-      .then(d => setMachineLoading(Array.isArray(d) ? d : []))
+      .then(setMachineLoading)
       .catch(() => setMachineLoading([]))
       .finally(() => setLoadingChart(false))
   }, [])

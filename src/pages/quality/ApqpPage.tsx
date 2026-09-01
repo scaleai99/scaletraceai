@@ -10,7 +10,7 @@ export function ApqpPage() {
   const [err, setErr] = useState('')
   const [f, setF] = useState({ part_number: '', customer: '', ppap_level: 3 })
   const [open, setOpen] = useState<APQPPackage | null>(null)
-  const load = useCallback(() => { listApqp().then(setRows).catch(() => setRows([])) }, [])
+  const load = useCallback(() => { listApqp().then(setRows).catch(e => setErr(String(e))) }, [])
   useEffect(() => { load() }, [load])
   const add = async () => { setErr(''); try { await createApqp(f); setF({ part_number: '', customer: '', ppap_level: 3 }); load() } catch (e: any) { setErr(e?.response?.data?.detail || String(e)) } }
   const save = async (p: APQPPackage) => { await updateApqp(p.id, { phase: p.phase, status: p.status, elements: p.elements }); setOpen(null); load() }
@@ -36,7 +36,7 @@ export function ApqpPage() {
 
 function ApqpDrawer({ pkg, onClose, onSave }: { pkg: APQPPackage; onClose: () => void; onSave: (p: APQPPackage) => void }) {
   const [p, setP] = useState<APQPPackage>(pkg)
-  const setEl = (i: number, status: string) => setP({ ...p, elements: (p.elements ?? []).map((e, j) => j === i ? { ...e, status } : e) })
+  const setEl = (i: number, status: string) => setP({ ...p, elements: p.elements.map((e, j) => j === i ? { ...e, status } : e) })
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
@@ -48,7 +48,7 @@ function ApqpDrawer({ pkg, onClose, onSave }: { pkg: APQPPackage; onClose: () =>
         </div>
         <p className="text-xs font-semibold text-gray-600 mb-1">18 PPAP elements</p>
         <div className="space-y-1 mb-4">
-          {(p.elements ?? []).map((el, i) => (
+          {p.elements.map((el, i) => (
             <div key={i} className="flex items-center justify-between text-xs border-b border-gray-100 py-1">
               <span>{i + 1}. {el.name}</span>
               <select className="border rounded text-xs" value={el.status} onChange={e => setEl(i, e.target.value)}><option>Pending</option><option>In Progress</option><option>Complete</option><option>N/A</option></select>

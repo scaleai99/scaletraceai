@@ -19,6 +19,7 @@ export interface RFQLineItem {
   rfq_id: string
   line_number: number
   part_number: string | null
+  item_id: string | null
   part_description: string | null
   drawing_number: string | null
   drawing_revision: string | null
@@ -47,6 +48,7 @@ export interface RFQ {
   id: string
   rfq_number: string
   customer_id: string
+  customer_name: string | null
   customer_site_id: string | null
   contact_name: string | null
   received_date: string
@@ -77,6 +79,7 @@ export interface RFQUpdate {
 }
 
 export interface RFQLineItemCreate {
+  item_id?: string | null
   part_number?: string
   part_description?: string
   drawing_number?: string
@@ -141,7 +144,7 @@ export interface ListRFQsParams {
 /** List RFQs with optional filters */
 export async function listRFQs(params: ListRFQsParams = {}): Promise<RFQ[]> {
   const { data } = await apiClient.get<RFQ[]>(BASE, { params })
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 /** Get a single RFQ by ID with line items */
@@ -152,7 +155,7 @@ export async function getRFQ(id: string): Promise<RFQ> {
 
 /** Create a new RFQ */
 export async function createRFQ(body: RFQCreate): Promise<RFQ> {
-  const { data } = await apiClient.post<RFQ>(BASE, body)
+  const { data } = await apiClient.post<RFQ>(`${BASE}/`, body)
   return data
 }
 
@@ -210,5 +213,5 @@ export async function listActiveCustomers(): Promise<CustomerOption[]> {
   const { data } = await apiClient.get<CustomerOption[]>(CUSTOMERS_BASE, {
     params: { status: 'Active', limit: 200 },
   })
-  return Array.isArray(data) ? data : []
+  return data
 }

@@ -987,42 +987,42 @@ function DashboardTab({ dashboard, loading, error, onRefresh }: DashboardTabProp
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard
               label="Total Employees"
-              value={dashboard.total_employees ?? 0}
+              value={dashboard.total_employees}
               icon={<Users size={16} className="text-indigo-600" />}
               colour="bg-indigo-50"
             />
             <StatCard
               label="Active"
-              value={dashboard.active_employees ?? 0}
+              value={dashboard.active_employees}
               icon={<UserCheck size={16} className="text-green-600" />}
               colour="bg-green-50"
               valueClass="text-green-700"
             />
             <StatCard
               label="Expiring Qualifications"
-              value={dashboard.expiring_qualifications ?? 0}
+              value={dashboard.expiring_qualifications}
               icon={<AlertTriangle size={16} className="text-amber-600" />}
               colour="bg-amber-50"
-              valueClass={(dashboard.expiring_qualifications ?? 0) > 0 ? 'text-amber-700' : 'text-gray-900'}
+              valueClass={dashboard.expiring_qualifications > 0 ? 'text-amber-700' : 'text-gray-900'}
             />
             <StatCard
               label="Absent Today"
-              value={dashboard.absent_today ?? 0}
+              value={dashboard.absent_today}
               icon={<UserMinus size={16} className="text-red-600" />}
               colour="bg-red-50"
-              valueClass={(dashboard.absent_today ?? 0) > 0 ? 'text-red-700' : 'text-gray-900'}
+              valueClass={dashboard.absent_today > 0 ? 'text-red-700' : 'text-gray-900'}
             />
           </div>
 
           {/* Headcount by department */}
-          {Object.keys(dashboard.headcount_by_dept ?? {}).length > 0 && (
+          {Object.keys(dashboard.headcount_by_dept).length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h3 className="text-sm font-semibold text-gray-700 mb-4">Headcount by Department</h3>
               <div className="space-y-3">
-                {Object.entries(dashboard.headcount_by_dept ?? {})
+                {Object.entries(dashboard.headcount_by_dept)
                   .sort((a, b) => b[1] - a[1])
                   .map(([dept, count]) => {
-                    const max = Math.max(...Object.values(dashboard.headcount_by_dept ?? {}))
+                    const max = Math.max(...Object.values(dashboard.headcount_by_dept))
                     const pct = max > 0 ? Math.round((count / max) * 100) : 0
                     return (
                       <div key={dept} className="flex items-center gap-3">

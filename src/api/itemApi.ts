@@ -116,7 +116,7 @@ export interface ItemListParams {
 }
 
 export const listItems = (params?: ItemListParams) =>
-  apiClient.get<ItemRecord[]>('/api/v1/items/', { params: params || {} }).then((r) => Array.isArray(r.data) ? r.data : [])
+  apiClient.get<ItemRecord[]>('/api/v1/items/', { params: params || {} }).then((r) => r.data)
 
 export const createItem = (body: Partial<ItemRecord>) =>
   apiClient.post<ItemRecord>('/api/v1/items/', body).then((r) => r.data)
@@ -129,3 +129,168 @@ export const getItem = (id: string) =>
 
 export const deleteItem = (id: string) =>
   apiClient.delete<{ deleted: string }>(`/api/v1/items/${id}`).then((r) => r.data)
+
+// ---------------------------------------------------------------------------
+// Item ↔ Supplier links (Approved Suppliers per item) — Tier-B
+// ---------------------------------------------------------------------------
+export interface ItemSupplierLink {
+  id: string
+  item_id: string
+  supplier_id: string
+  supplier_code: string | null
+  supplier_name: string | null
+  supply_category: string | null
+  supply_type: string | null
+  lead_time_days: number | null
+  unit_price: number | null
+  is_preferred: boolean
+  status: string
+}
+
+export interface ItemSupplierCreatePayload {
+  supplier_id: string
+  supply_type?: string
+  lead_time_days?: number
+  unit_price?: number
+  is_preferred?: boolean
+  remarks?: string
+}
+
+export const listItemSuppliers = (itemId: string) =>
+  apiClient.get<ItemSupplierLink[]>(`/api/v1/items/${itemId}/suppliers`).then((r) => r.data)
+
+export const addItemSupplier = (itemId: string, body: ItemSupplierCreatePayload) =>
+  apiClient.post<ItemSupplierLink>(`/api/v1/items/${itemId}/suppliers`, body).then((r) => r.data)
+
+export const deleteItemSupplier = (itemId: string, linkId: string) =>
+  apiClient.delete(`/api/v1/items/${itemId}/suppliers/${linkId}`).then((r) => r.data)
+
+// ===========================================================================
+// Item Documents — versioned drawing/document storage (revision control)
+// ===========================================================================
+export interface ItemDocument {
+  id: string
+  item_id: string
+  document_type: string
+  file_name: string | null
+  file_path: string | null
+  file_size_bytes: number | null
+  content_type: string | null
+  doc_number: string | null
+  revision: string | null
+  issue_date: string | null
+  notes: string | null
+  version_no: number
+  is_current: boolean
+  superseded_at: string | null
+  superseded_by_id: string | null
+  extraction_status: string | null
+  ai_extraction_id: string | null
+  extracted_fields?: Record<string, any> | null
+  status: string
+  uploaded_by: string | null
+  uploaded_at: string | null
+}
+
+export interface ItemDocumentUploadFields {
+  document_type?: string
+  revision?: string
+  doc_number?: string
+  issue_date?: string
+  notes?: string
+}
+
+/** Current-version documents only (one row per document_type). */
+export const listItemDocuments = (itemId: string) =>
+  apiClient.get<ItemDocument[]>(`/api/v1/items/${itemId}/documents`).then((r) => r.data)
+
+/** Full revision history — every version, newest first (supersedes retained). */
+export const listItemDocumentHistory = (itemId: string) =>
+  apiClient.get<ItemDocument[]>(`/api/v1/items/${itemId}/documents/history`).then((r) => r.data)
+
+export const uploadItemDocument = (
+  itemId: string,
+  file: File,
+  fields: ItemDocumentUploadFields = {},
+) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  fd.append('document_type', fields.document_type || 'Drawing')
+  if (fields.revision) fd.append('revision', fields.revision)
+  if (fields.doc_number) fd.append('doc_number', fields.doc_number)
+  if (fields.issue_date) fd.append('issue_date', fields.issue_date)
+  if (fields.notes) fd.append('notes', fields.notes)
+  return apiClient
+    .post<ItemDocument>(`/api/v1/items/${itemId}/documents/upload`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    .then((r) => r.data)
+}
+
+export const deleteItemDocument = (itemId: string, docId: string) =>
+  apiClient.delete(`/api/v1/items/${itemId}/documents/${docId}`).then((r) => r.data)
+
+// ===========================================================================
+// Item BOM components (Bill of Materials)
+// ===========================================================================
+export interface ItemBomComponent {
+  id: string
+  item_id: string
+  component_item_id: string | null
+  component_code: string | null
+  component_name: string | null
+  quantity: number | null
+  uom: string | null
+  level: number | null
+  remarks: string | null
+  status: string
+}
+
+export interface ItemBomCreatePayload {
+  component_code?: string
+  component_name?: string
+  quantity?: number
+  uom?: string
+  level?: number
+  remarks?: string
+}
+
+export const listItemBom = (itemId: string) =>
+  apiClient.get<ItemBomComponent[]>(`/api/v1/items/${itemId}/bom`).then((r) => r.data)
+
+export const addItemBom = (itemId: string, body: ItemBomCreatePayload) =>
+  apiClient.post<ItemBomComponent>(`/api/v1/items/${itemId}/bom`, body).then((r) => r.data)
+
+export const deleteItemBom = (itemId: string, linkId: string) =>
+  apiClient.delete(`/api/v1/items/${itemId}/bom/${linkId}`).then((r) => r.data)
+
+// ===========================================================================
+// Item ↔ Customer part mapping
+// ===========================================================================
+export interface ItemCustomerPart {
+  id: string
+  item_id: string
+  customer_id: string | null
+  customer_code: string | null
+  customer_name: string | null
+  customer_part_no: string | null
+  remarks: string | null
+  status: string
+}
+
+export interface ItemCustomerPartCreatePayload {
+  customer_id?: string
+  customer_code?: string
+  customer_name?: string
+  customer_part_no?: string
+  remarks?: string
+}
+
+export const listItemCustomerParts = (itemId: string) =>
+  apiClient.get<ItemCustomerPart[]>(`/api/v1/items/${itemId}/customer-parts`).then((r) => r.data)
+
+export const addItemCustomerPart = (itemId: string, body: ItemCustomerPartCreatePayload) =>
+  apiClient.post<ItemCustomerPart>(`/api/v1/items/${itemId}/customer-parts`, body).then((r) => r.data)
+
+export const deleteItemCustomerPart = (itemId: string, linkId: string) =>
+  apiClient.delete(`/api/v1/items/${itemId}/customer-parts/${linkId}`).then((r) => r.data)

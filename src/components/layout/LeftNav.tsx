@@ -2,6 +2,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
+  History,
   Building2,
   Users,
   Truck,
@@ -75,14 +76,8 @@ const navGroups: NavGroup[] = [
       { to: '/masters/company', label: 'Company', icon: Building2 },
       { to: '/masters/customers', label: 'Customers', icon: Users },
       { to: '/masters/suppliers', label: 'Suppliers', icon: Truck },
-      { to: '/masters/employees', label: 'Employees', icon: Users },
       { to: '/masters/items', label: 'Items', icon: Package },
       { to: '/masters/specifications', label: 'Specifications', icon: FileText },
-      { to: '/masters/tooling', label: 'Tooling', icon: Wrench },
-      { to: '/masters/step', label: 'STEP / 3D Ingest', icon: Box },
-      { to: '/masters/exchange-rates', label: 'Exchange Rates', icon: Coins },
-      { to: '/masters/departments', label: 'Department', icon: GitBranch },
-      { to: '/masters/designations', label: 'Designation', icon: Layers },
     ],
   },
   {
@@ -117,6 +112,12 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    label: 'Shop Floor - Special Process',
+    items: [
+      { to: '/shopfloor/chemical-batches', label: 'Chemical Batches', icon: FlaskConical },
+    ],
+  },
+  {
     label: 'Quality',
     items: [
       { to: '/quality/dashboard', label: 'QMS Dashboard', icon: ClipboardCheck },
@@ -134,22 +135,23 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: 'Shop Floor - Special Process',
+    label: 'Dispatch',
     items: [
-      { to: '/shopfloor/chemical-batches', label: 'Chemical Batches', icon: FlaskConical },
+      { to: '/dispatch/challans', label: 'Delivery Challan', icon: Truck },
     ],
   },
   {
-    label: 'Dispatch & Finance',
+    label: 'Finance',
     items: [
-      { to: '/dispatch/challans', label: 'Delivery Challan', icon: Truck },
       { to: '/finance/invoices', label: 'Invoices', icon: Receipt },
       { to: '/finance/ar', label: 'AR / AP', icon: BarChart3 },
       { to: '/finance/gstr', label: 'GSTR-1 Export', icon: FileText },
       { to: '/finance/general-ledger', label: 'General Ledger', icon: BookOpen },
       { to: '/finance/fixed-assets', label: 'Fixed Assets', icon: Boxes },
       { to: '/finance/budget', label: 'Budgeting', icon: PieChart },
-      { to: '/finance/whatsapp-log', label: 'WhatsApp Log', icon: Send },
+      { to: '/masters/exchange-rates', label: 'Exchange Rates', icon: Coins },
+      { to: '/masters/tooling', label: 'Tooling', icon: Wrench },
+      { to: '/masters/step', label: 'STEP / 3D Ingest', icon: Box },
     ],
   },
   {
@@ -158,16 +160,25 @@ const navGroups: NavGroup[] = [
       { to: '/integration/edi', label: 'EDI / Portal', icon: Network },
       { to: '/integration/payments', label: 'Payments', icon: CreditCard },
       { to: '/integration/e-signature', label: 'E-Signature', icon: PenTool },
+      { to: '/finance/whatsapp-log', label: 'WhatsApp Log', icon: Send },
+    ],
+  },
+  {
+    label: 'HR',
+    items: [
+      { to: '/masters/employees', label: 'Employee Master', icon: Users },
+      { to: '/masters/departments', label: 'Department', icon: GitBranch },
+      { to: '/masters/designations', label: 'Designation', icon: Layers },
+      { to: '/hr', label: 'HR Dashboard', icon: Users },
+      { to: '/hr/payroll', label: 'Payroll', icon: Wallet },
+      { to: '/hr/appraisals', label: 'Appraisals', icon: Star },
+      { to: '/hr/recruitment', label: 'Recruitment', icon: UserPlus },
+      { to: '/hr/ess', label: 'Self-Service', icon: CalendarDays },
     ],
   },
   {
     label: 'Operations',
     items: [
-      { to: '/hr', label: 'HR', icon: Users },
-      { to: '/hr/payroll', label: 'Payroll', icon: Wallet },
-      { to: '/hr/appraisals', label: 'Appraisals', icon: Star },
-      { to: '/hr/recruitment', label: 'Recruitment', icon: UserPlus },
-      { to: '/hr/ess', label: 'Self-Service', icon: CalendarDays },
       { to: '/maintenance', label: 'Maintenance', icon: Wrench },
     ],
   },
@@ -205,6 +216,24 @@ export function LeftNav() {
         >
           <LayoutDashboard size={18} />
           Dashboard
+        </NavLink>
+      </div>
+
+      {/* Audit Trail link -- standalone top-level, like Dashboard, not nested
+          in a collapsible group, since it spans every module. Administrator
+          only on the backend; visible to all here since the API itself
+          enforces the gate and returns a clear 403 otherwise. */}
+      <div className="px-3 pt-1">
+        <NavLink
+          to="/audit-trail"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              isActive ? 'bg-[#005c87] text-white' : 'text-gray-200 hover:bg-[#2a5a8f] hover:text-white'
+            }`
+          }
+        >
+          <History size={18} />
+          Audit Trail
         </NavLink>
       </div>
 

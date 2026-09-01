@@ -48,21 +48,18 @@ export function useDemoFallback<T>(
     apiFnRef.current()
       .then((result) => {
         if (cancelled) return
-        if (Array.isArray(result) && result.length > 0) {
-          setData(result)
-          setIsDemo(false)
-        } else {
-          // Empty array from API → use demo data
-          setData(demoData)
-          setIsDemo(demoData.length > 0)
-        }
+        // Real data only (CLAUDE.md rule 2): an empty list renders empty,
+        // never synthetic demo rows.
+        setData(Array.isArray(result) ? result : [])
+        setIsDemo(false)
       })
-      .catch(() => {
+      .catch((err: any) => {
         if (cancelled) return
-        // API error → use demo data
-        setData(demoData)
-        setIsDemo(demoData.length > 0)
-        setError(null) // Don't show error when demo data is available
+        // Surface the real failure instead of masking a broken endpoint with
+        // fake data (this exact masking previously hid a broken Item list).
+        setData([])
+        setIsDemo(false)
+        setError(err?.response?.data?.detail || err?.message || 'Failed to load data')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)

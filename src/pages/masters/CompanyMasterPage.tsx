@@ -8,12 +8,13 @@
  *   4. Added AddDocumentModal and AddDocNumberingModal
  */
 
-import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import {
   ArrowLeft, Plus, Calendar, ChevronDown,
   Building2, Shield, IndianRupee, Phone, Info, Upload, Check,
-  FileText, Trash2, Pencil, Clock, Download,
+  FileText, Trash2, Pencil, Clock, Download, Eye, MoreVertical,
+  CheckCircle2, AlertTriangle, XCircle, X, Sparkles, Loader2,
 } from 'lucide-react'
 import {
   Button, Input, Textarea, Select, StateMachineBadge,
@@ -22,13 +23,14 @@ import {
 import { formatDate, validateGSTIN } from '../../lib/utils'
 
 import {
-  Company, CompanyCreatePayload, Plant, CompanyDocument, DocumentNumbering,
+  Company, CompanyCreatePayload, Plant, CompanyDocument, DocumentNumbering, AiExtractedFields,
   getCompanies, getCompany, createCompany, updateCompany,
   activateCompany, listPlants, createPlant, seedHolidays, createHoliday, deleteHoliday,
   gstinLookup, GSTINLookupResponse, PublicHoliday, listHolidays,
   listCompanyDocuments, createCompanyDocument, deleteCompanyDocument, updateCompanyDocument,
   deactivateCompany, deleteCompany, listDocNumbering, createDocNumbering, deleteDocNumbering,
   updateDocNumbering, deletePlant, uploadCompanyLogo, uploadDocumentFile, deleteCompanyLogo,
+  listCompanyAuditTrail, AuditTrailEntry,
 } from '../../api/companyApi'
 
 // ---------------------------------------------------------------------------
@@ -134,12 +136,20 @@ const COUNTRY_OPTIONS = [
 
 const DOC_TYPE_OPTIONS = [
   { value: '', label: '- Select Document Type -' },
+  { value: 'COI Certificate', label: 'Certificate of Incorporation (COI)' },
   { value: 'AS 9100 Rev D Certificate', label: 'AS 9100 Rev D Certificate' },
   { value: 'NADCAP Certificate', label: 'NADCAP Certificate' },
+  { value: 'ISO Certificate', label: 'ISO Certificate' },
   { value: 'Factory Licence', label: 'Factory Licence' },
-  { value: 'GST Registration', label: 'GST Registration' },
+  { value: 'KSPCB Consent', label: 'KSPCB / Pollution Control Consent' },
+  { value: 'GST Registration', label: 'GST Registration Certificate' },
   { value: 'PAN Card', label: 'PAN Card' },
-  { value: 'Other', label: 'Other' },
+  { value: 'TAN Certificate', label: 'TAN Certificate' },
+  { value: 'MSME Certificate', label: 'MSME (Udyam) Certificate' },
+  { value: 'PF Registration Certificate', label: 'PF Registration Certificate' },
+  { value: 'ESI Registration Certificate', label: 'ESI Registration Certificate' },
+  { value: 'IEC Certificate', label: 'IEC Certificate' },
+  { value: '__other__', label: 'Other (specify)' },
 ]
 
 const DOC_STATUS_OPTIONS = [
@@ -239,8 +249,15 @@ function AddPlantModal({ open, onClose, onSaved, companyId }: { open: boolean; o
 // ---------------------------------------------------------------------------
 // Add Document Modal (NEW)
 // ---------------------------------------------------------------------------
-function AddDocumentModal({ open, onClose, onSaved, companyId }: { open: boolean; onClose: () => void; onSaved: (doc: CompanyDocument) => void; companyId: string }) {
+const DOC_CATEGORY_OPTIONS = [
+  { value: 'General', label: 'General Document / Licence' },
+  { value: 'Certification', label: 'Certification' },
+]
+
+function AddDocumentModal({ open, onClose, onSaved, companyId, initialFile }: { open: boolean; onClose: () => void; onSaved: (doc: CompanyDocument) => void; companyId: string; initialFile?: File | null }) {
   const [docType, setDocType] = useState('')
+  const [customDocType, setCustomDocType] = useState('')
+  const [category, setCategory] = useState<'General' | 'Certification'>('General')
   const [docNumber, setDocNumber] = useState('')
   const [revision, setRevision] = useState('')
   const [issueDate, setIssueDate] = useState('')
@@ -251,29 +268,58 @@ function AddDocumentModal({ open, onClose, onSaved, companyId }: { open: boolean
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const reset = () => { setDocType(''); setDocNumber(''); setRevision(''); setIssueDate(''); setExpiryDate(''); setIssuingAuthority(''); setStatus('Pending'); setFile(null); setError(null) }
+  // Drag-and-drop onto the Documents tab's dropzone pre-fills the file here.
+  useEffect(() => { if (open && initialFile) setFile(initialFile) }, [open, initialFile])
+
+  const reset = () => { setDocType(''); setCustomDocType(''); setCategory('General'); setDocNumber(''); setRevision(''); setIssueDate(''); setExpiryDate(''); setIssuingAuthority(''); setStatus('Pending'); setFile(null); setError(null) }
   const handleClose = () => { reset(); onClose() }
 
+  // Picking a type suggests the right category — user can still override below.
+  const handleDocTypeChange = (value: string) => {
+    setDocType(value)
+    setCategory(/certificate|\biso\b/i.test(value) ? 'Certification' : 'General')
+  }
+
   const handleSave = async () => {
-    if (!docType) { setError('Document type is required'); return }
+    const finalDocType = docType === '__other__' ? customDocType.trim() : docType
+    if (!finalDocType) { setError(docType === '__other__' ? 'Please specify the document type' : 'Document type is required'); return }
     setSaving(true); setError(null)
+    let doc: CompanyDocument
     try {
-      let doc = await createCompanyDocument(companyId, { doc_type: docType, doc_number: docNumber.trim() || undefined, revision: revision.trim() || undefined, issue_date: issueDate || undefined, expiry_date: expiryDate || undefined, issuing_authority: issuingAuthority.trim() || undefined, status })
-      if (file) {
-        doc = await uploadDocumentFile(companyId, doc.id, file)
-      }
-      onSaved(doc); reset(); onClose()
+      doc = await createCompanyDocument(companyId, { doc_type: finalDocType, doc_number: docNumber.trim() || undefined, revision: revision.trim() || undefined, issue_date: issueDate || undefined, expiry_date: expiryDate || undefined, issuing_authority: issuingAuthority.trim() || undefined, status, category })
     } catch (err: unknown) {
       const axErr = err as { response?: { data?: { detail?: string } } }
       setError(axErr?.response?.data?.detail ?? 'Failed to add document')
-    } finally { setSaving(false) }
+      setSaving(false)
+      return
+    }
+    if (file) {
+      try {
+        doc = await uploadDocumentFile(companyId, doc.id, file)
+      } catch (fileErr: unknown) {
+        // The document record is already saved server-side at this point --
+        // reflect it in the list instead of hiding a real DB row behind a
+        // generic failure message, and tell the user how to retry the file.
+        const axErr = fileErr as { response?: { data?: { detail?: string } } }
+        onSaved(doc); reset(); onClose()
+        alert(`Document saved, but the file could not be attached: ${axErr?.response?.data?.detail ?? 'upload failed'}. Use the upload icon on its row to retry.`)
+        setSaving(false)
+        return
+      }
+    }
+    onSaved(doc); reset(); onClose()
+    setSaving(false)
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title="Add Document" footer={<><Button variant="secondary" onClick={handleClose}>Cancel</Button><Button variant="primary" onClick={handleSave} loading={saving}>Save Document</Button></>}>
+    <Modal open={open} onClose={handleClose} title="Upload Document" footer={<><Button variant="secondary" onClick={handleClose}>Cancel</Button><Button variant="primary" onClick={handleSave} loading={saving}>Save Document</Button></>}>
       {error && <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div>}
       <div className="flex flex-col gap-4">
-        <Select label="Document Type" options={DOC_TYPE_OPTIONS} value={docType} onChange={(e) => setDocType(e.target.value)} required />
+        <Select label="Document Type" options={DOC_TYPE_OPTIONS} value={docType} onChange={(e) => handleDocTypeChange(e.target.value)} required />
+        {docType === '__other__' && (
+          <Input label="Specify Document Type" value={customDocType} onChange={(e) => setCustomDocType(e.target.value)} placeholder="e.g. ISO 14001 Certificate" required />
+        )}
+        <Select label="Category" options={DOC_CATEGORY_OPTIONS} value={category} onChange={(e) => setCategory(e.target.value as 'General' | 'Certification')} />
         <Input label="Document Number" value={docNumber} onChange={(e) => setDocNumber(e.target.value)} className="font-mono" />
         <Input label="Revision" value={revision} onChange={(e) => setRevision(e.target.value)} maxLength={10} />
         <div className="grid grid-cols-2 gap-3">
@@ -284,6 +330,146 @@ function AddDocumentModal({ open, onClose, onSaved, companyId }: { open: boolean
         <Select label="Status" options={DOC_STATUS_OPTIONS} value={status} onChange={(e) => setStatus(e.target.value)} />
         <div>
           <label className="block text-xs font-semibold text-gray-600 mb-1">Attach File (optional)</label>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/svg+xml,application/pdf"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            className="block w-full text-xs text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+          />
+          {file && <div className="mt-1 text-[11px] text-gray-500">Selected: {file.name}</div>}
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Certification data captured for a company that hasn't been saved yet —
+// held in memory and created (with file upload + category: "Certification")
+// once the company record itself is created. See PendingCert below.
+// ---------------------------------------------------------------------------
+interface PendingCert {
+  key: string          // stable id generated when the pending certification is added
+  docType: string      // resolved document type sent to the backend (e.g. "AS 9100 Rev D Certificate")
+  label: string        // short label shown on the header tile
+  file: File
+  preview: string      // data URL preview (images) or blank for non-image files
+  docNumber: string
+  issueDate: string
+  expiryDate: string
+  issuingAuthority: string
+  status: string
+}
+
+// ---------------------------------------------------------------------------
+// Certification Modal — opened by the header's "+ Add" tile. Free-choice
+// doc_type (via the Other-(specify) sentinel on DOC_TYPE_OPTIONS). Always writes
+// category: "Certification". Supports both a saved company (creates the
+// CompanyDocument + uploads the file immediately) and a brand-new,
+// not-yet-saved company (stages the data as a PendingCert, created once the
+// company itself is saved — see handleSave's pending-certs loop).
+// ---------------------------------------------------------------------------
+function CertificationModal({
+  open, onClose, certKey, companyId, onSavedForCompany, onSavedPending,
+}: {
+  open: boolean
+  onClose: () => void
+  certKey: string // always '__new__' — kept as a prop for a stable pendingCerts key generator
+  companyId: string | null
+  onSavedForCompany: (doc: CompanyDocument) => void
+  onSavedPending: (cert: PendingCert) => void
+}) {
+  const [docType, setDocType] = useState('')
+  const [customDocType, setCustomDocType] = useState('')
+  const [docNumber, setDocNumber] = useState('')
+  const [issueDate, setIssueDate] = useState('')
+  const [expiryDate, setExpiryDate] = useState('')
+  const [issuingAuthority, setIssuingAuthority] = useState('')
+  const [status, setStatus] = useState('Valid')
+  const [file, setFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const reset = () => { setDocType(''); setCustomDocType(''); setDocNumber(''); setIssueDate(''); setExpiryDate(''); setIssuingAuthority(''); setStatus('Valid'); setFile(null); setError(null) }
+  const handleClose = () => { reset(); onClose() }
+
+  const handleSave = async () => {
+    const finalDocType = docType === '__other__' ? customDocType.trim() : docType
+    if (!finalDocType) { setError('Certification type is required'); return }
+    setSaving(true); setError(null)
+    try {
+      if (companyId) {
+        // Saved company — persist immediately.
+        const doc = await createCompanyDocument(companyId, {
+          doc_type: finalDocType,
+          doc_number: docNumber.trim() || undefined,
+          issue_date: issueDate || undefined,
+          expiry_date: expiryDate || undefined,
+          issuing_authority: issuingAuthority.trim() || undefined,
+          status,
+          category: 'Certification',
+        })
+        if (file) {
+          try {
+            const withFile = await uploadDocumentFile(companyId, doc.id, file)
+            onSavedForCompany(withFile)
+          } catch (fileErr: unknown) {
+            // Certification record is already saved server-side -- reflect
+            // it instead of hiding a real DB row behind a generic failure.
+            const axErr = fileErr as { response?: { data?: { detail?: string } } }
+            onSavedForCompany(doc)
+            reset(); onClose()
+            alert(`Certification saved, but the certificate could not be attached: ${axErr?.response?.data?.detail ?? 'upload failed'}. Go to the Documents tab and use the upload icon on this record to attach the file.`)
+            setSaving(false)
+            return
+          }
+        } else {
+          onSavedForCompany(doc)
+        }
+        reset(); onClose()
+      } else {
+        // New, not-yet-saved company — stage for creation on save.
+        if (!file) { setError('Please attach the certificate file'); return }
+        const preview = file.type.startsWith('image/')
+          ? await new Promise<string>((resolve) => {
+              const reader = new FileReader()
+              reader.onload = (ev) => resolve((ev.target?.result as string) || '')
+              reader.readAsDataURL(file)
+            })
+          : ''
+        onSavedPending({
+          key: `${certKey}-${Date.now()}`,
+          docType: finalDocType,
+          label: finalDocType,
+          file, preview,
+          docNumber: docNumber.trim(), issueDate, expiryDate,
+          issuingAuthority: issuingAuthority.trim(), status,
+        })
+        reset(); onClose()
+      }
+    } catch (err: unknown) {
+      const axErr = err as { response?: { data?: { detail?: string } } }
+      setError(axErr?.response?.data?.detail ?? 'Failed to save certification')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Modal open={open} onClose={handleClose} title="Add Certification" footer={<><Button variant="secondary" onClick={handleClose}>Cancel</Button><Button variant="primary" onClick={handleSave} loading={saving}>Save Certification</Button></>}>
+      {error && <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div>}
+      <div className="flex flex-col gap-4">
+        <Select label="Certification Type" options={DOC_TYPE_OPTIONS} value={docType} onChange={(e) => setDocType(e.target.value)} required />
+        {docType === '__other__' && (
+          <Input label="Specify Certification Type" value={customDocType} onChange={(e) => setCustomDocType(e.target.value)} placeholder="e.g. ISO 14001 Certificate" required />
+        )}
+        <Input label="Certificate Number" value={docNumber} onChange={(e) => setDocNumber(e.target.value)} className="font-mono" />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Issue Date" type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
+          <Input label="Expiry Date" type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
+        </div>
+        <Input label="Issuing Authority" value={issuingAuthority} onChange={(e) => setIssuingAuthority(e.target.value)} />
+        <Select label="Status" options={DOC_STATUS_OPTIONS} value={status} onChange={(e) => setStatus(e.target.value)} />
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Attach File{companyId ? ' (optional)' : ''}</label>
           <input
             type="file"
             accept="image/png,image/jpeg,image/svg+xml,application/pdf"
@@ -383,11 +569,73 @@ function EditDocumentModal({ open, onClose, onSaved, companyId, doc }: { open: b
     } finally { setSaving(false) }
   }
 
+  const aiFields: AiExtractedFields | null | undefined = doc?.extracted_fields
+  const applyAi = (setter: (v: string) => void, value: string | number | null | undefined) => {
+    if (value === null || value === undefined) return
+    setter(String(value))
+  }
+
   return (
     <Modal open={open} onClose={onClose} title="Edit Document" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={handleSave} loading={saving}>Save Changes</Button></>}>
       {error && <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {aiFields && (aiFields.primary || aiFields.secondary_drawing_fields) && (
+        <div className="mb-4 rounded-lg border border-[#005c87]/20 bg-[#005c87]/5 px-3 py-2.5">
+          <div className="flex items-center gap-1.5 mb-2 text-[11px] font-semibold text-[#005c87] uppercase">
+            <Sparkles size={12} /> AI suggested fields — review and apply
+          </div>
+          {aiFields.primary && (
+            <div className="space-y-1.5">
+              {([
+                ['document_title', 'Title (info only)', null],
+                ['doc_number', 'Doc Number', setDocNumber],
+                ['revision', 'Revision', setRevision],
+                ['issue_date', 'Issue Date', setIssueDate],
+                ['expiry_date', 'Expiry Date', setExpiryDate],
+                ['issuing_authority', 'Issuing Authority', setIssuingAuthority],
+              ] as const).map(([aiKey, label, setter]) => {
+                const f = aiFields.primary?.[aiKey]
+                if (!f || f.value === null || f.value === undefined) return null
+                return (
+                  <div key={aiKey} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-gray-500 w-28 shrink-0">{label}</span>
+                    <span className="flex-1 flex items-center gap-1.5 min-w-0">
+                      <span className="truncate text-gray-800">{String(f.value)}</span>
+                      <ConfidenceBadge score={f.confidence} />
+                    </span>
+                    {setter && (
+                      <button
+                        type="button"
+                        onClick={() => applyAi(setter, f.value)}
+                        className="shrink-0 px-2 py-0.5 text-[10px] font-medium border border-[#005c87]/40 text-[#005c87] rounded hover:bg-[#005c87]/10"
+                      >
+                        Apply
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {aiFields.secondary_drawing_fields && (
+            <details className="mt-2">
+              <summary className="text-[10px] text-gray-500 cursor-pointer select-none">Also detected (informational — engineering/drawing-style fields, not applied to this form)</summary>
+              <div className="mt-1 text-[10px] text-gray-500 space-y-0.5">
+                {Object.entries(aiFields.secondary_drawing_fields).map(([k, v]) => (
+                  <div key={k}>{k}: {typeof v.value === 'object' ? JSON.stringify(v.value) : String(v.value)}</div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
       <div className="flex flex-col gap-4">
-        <Select label="Document Type" options={DOC_TYPE_OPTIONS} value={docType} onChange={(e) => setDocType(e.target.value)} required />
+        <Select
+          label="Document Type"
+          options={docType && !DOC_TYPE_OPTIONS.some(o => o.value === docType) ? [...DOC_TYPE_OPTIONS, { value: docType, label: docType }] : DOC_TYPE_OPTIONS}
+          value={docType}
+          onChange={(e) => setDocType(e.target.value)}
+          required
+        />
         <Input label="Document Number" value={docNumber} onChange={(e) => setDocNumber(e.target.value)} className="font-mono" />
         <Input label="Revision" value={revision} onChange={(e) => setRevision(e.target.value)} maxLength={10} />
         <div className="grid grid-cols-2 gap-3">
@@ -463,13 +711,24 @@ function ActivationErrorModal({ open, onClose, missing }: { open: boolean; onClo
   )
 }
 
+// Fields carried over by the Actions → Duplicate flow — template-like,
+// non-unique fields only. Everything unique/company-specific (code, name,
+// statutory numbers, contact, banking, logo, documents...) stays blank.
+type DuplicateFrom = Partial<Pick<Company,
+  | 'company_type' | 'industry' | 'business_type' | 'base_currency' | 'country' | 'timezone'
+  | 'financial_year_start' | 'accounting_standard' | 'cost_method' | 'tds_applicable'
+  | 'tcs_applicable' | 'audit_required' | 'rounding_off_level'
+  | 'registered_address_line1' | 'registered_address_line2' | 'registered_city'
+  | 'registered_state' | 'registered_country' | 'registered_pin'
+  | 'corporate_same_as_registered' | 'corporate_address_line1' | 'corporate_address_line2'
+  | 'corporate_city' | 'corporate_state' | 'corporate_country' | 'corporate_pin'
+>>
+
 const TABS = [
   { key: 'general', label: 'General Information' },
   { key: 'contact', label: 'Contact Details' },
   { key: 'address', label: 'Address' },
   { key: 'banking', label: 'Banking Information' },
-  { key: 'factory', label: 'Factory Licence' },
-  { key: 'statutory', label: 'Statutory & Compliance' },
   { key: 'business', label: 'Business Details' },
   { key: 'documents', label: 'Documents' },
   { key: 'audit', label: 'Audit & Notes' },
@@ -508,46 +767,14 @@ function nextDocNumberPreview(c: DocumentNumbering): string {
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// Static demo company — used when no backend is available
-// ---------------------------------------------------------------------------
-const DEMO_COMPANY: Company = {
-  id: 'demo-company-001',
-  company_code: 'SCALEAI',
-  legal_name: 'Scale Trace AI Private Limited',
-  trade_name: 'Scale AI',
-  short_name: 'Scale AI',
-  status: 'Active',
-  cin_number: 'U72200KA2024PTC185123',
-  company_type: 'Private Limited',
-  incorporation_date: '2024-01-15',
-  industry: 'Aerospace',
-  business_type: 'Manufacturing',
-  base_currency: 'INR',
-  country: 'India',
-  timezone: 'Asia/Kolkata',
-  pan: 'AABCS1234A',
-  gstin: '29AABCS1234A1ZV',
-  tan: 'BLRS12345A',
-  registered_address_line1: '123 Tech Park, Electronic City',
-  registered_city: 'Bangalore',
-  registered_state: 'Karnataka',
-  registered_country: 'India',
-  registered_pin: '560100',
-  phone: '+91-80-12345678',
-  email: 'contact@scaletrace.ai',
-  website: 'https://scaletrace.ai',
-  created_at: '2024-01-15T10:00:00Z',
-  updated_at: '2024-01-20T14:30:00Z',
-}
-
 export function CompanyMasterPage() {
   const { id } = useParams<{ id?: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const isNew = !id || id === 'new'
 
-  // Data state — pre-seeded with demo company so list view always shows content
-  const [companiesList, setCompaniesList] = useState<Company[]>([DEMO_COMPANY])
+  // Data state
+  const [companiesList, setCompaniesList] = useState<Company[]>([])
   const [companySearch, setCompanySearch] = useState('')
   const [companyStatus, setCompanyStatus] = useState('')
   const [company, setCompany] = useState<Company | null>(null)
@@ -555,7 +782,9 @@ export function CompanyMasterPage() {
   const [companyDocs, setCompanyDocs] = useState<CompanyDocument[]>([])
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [pendingLogoFile, setPendingLogoFile] = useState<File | null>(null)
-  const [pendingCerts, setPendingCerts] = useState<{type: string, file: File, preview: string}[]>([])
+  const [pendingCerts, setPendingCerts] = useState<PendingCert[]>([])
+  const [showCertModal, setShowCertModal] = useState(false)
+  const [certModalKey, setCertModalKey] = useState('__new__')
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [docNumberingConfigs, setDocNumberingConfigs] = useState<DocumentNumbering[]>([])
   const [holidays, setHolidays] = useState<PublicHoliday[]>([])
@@ -566,6 +795,11 @@ export function CompanyMasterPage() {
   const [addingHoliday, setAddingHoliday] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [auditEntries, setAuditEntries] = useState<AuditTrailEntry[]>([])
+  const [auditError, setAuditError] = useState<string | null>(null)
+  const [docsLoadError, setDocsLoadError] = useState<string | null>(null)
+  const [docNumberingLoadError, setDocNumberingLoadError] = useState<string | null>(null)
+  const [holidaysLoadError, setHolidaysLoadError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('general')
 
   // Form state - Basic
@@ -644,6 +878,9 @@ export function CompanyMasterPage() {
   const [factoryLicenceIssuingAuthority, setFactoryLicenceIssuingAuthority] = useState('')
   const [kspcbConsentNumber, setKspcbConsentNumber] = useState('')
   const [kspcbConsentValidUpto, setKspcbConsentValidUpto] = useState('')
+  const [factoryLicenceMaxWorkers, setFactoryLicenceMaxWorkers] = useState('')
+  const [kspcbCategory, setKspcbCategory] = useState('')
+  const [kspcbConditions, setKspcbConditions] = useState('')
 
   // Certifications
   const [as9100CertNumber, setAs9100CertNumber] = useState('')
@@ -659,10 +896,16 @@ export function CompanyMasterPage() {
   const [gstinLookupResult, setGstinLookupResult] = useState<GSTINLookupResponse | null>(null)
   const [gstinLookupLoading, setGstinLookupLoading] = useState(false)
   const [gstinLookupError, setGstinLookupError] = useState<string | null>(null)
+  // GSTIN-registry-sourced (populated by the lookup, not user-typed) — persisted with the company
+  const [gstStatus, setGstStatus] = useState('')
+  const [gstTaxpayerType, setGstTaxpayerType] = useState('')
 
   // Modals
   const [showAddPlant, setShowAddPlant] = useState(false)
   const [showAddDocument, setShowAddDocument] = useState(false)
+  const [droppedDocFile, setDroppedDocFile] = useState<File | null>(null)
+  const [docDropActive, setDocDropActive] = useState(false)
+  const [openDocActionMenu, setOpenDocActionMenu] = useState<string | null>(null)
   const [showAddDocNumbering, setShowAddDocNumbering] = useState(false)
   const [showEditDocument, setShowEditDocument] = useState(false)
   const [editingDoc, setEditingDoc] = useState<CompanyDocument | null>(null)
@@ -707,10 +950,15 @@ export function CompanyMasterPage() {
     setFactoryLicenceIssuingAuthority(''); setKspcbConsentNumber(''); setKspcbConsentValidUpto('')
     setAs9100CertNumber(''); setAs9100CertValidUpto('')
     setNadcapCertNumber(''); setNadcapCertValidUpto('')
+    setFactoryLicenceMaxWorkers(''); setKspcbCategory(''); setKspcbConditions('')
     setNotes('')
     setGstinLookupValue(''); setGstinLookupResult(null); setGstinLookupError(null)
+    setGstStatus(''); setGstTaxpayerType('')
     setPlants([]); setLogoUrl(null); setCompanyDocs([]); setDocNumberingConfigs([]); setHolidays([])
     setPendingLogoFile(null); setPendingCerts([])
+    setAuditEntries([]); setAuditError(null)
+    setDocsLoadError(null); setDocNumberingLoadError(null); setHolidaysLoadError(null)
+    setOpenDocActionMenu(null); setDroppedDocFile(null); setDocDropActive(false)
     setSaveError(null); setSaveSuccess(false); setActiveTab('general')
   }, [])
 
@@ -740,6 +988,8 @@ export function CompanyMasterPage() {
     setPfNumber((f.pf_number as string) ?? '')
     setEsiNumber((f.esi_number as string) ?? '')
     setProfessionTaxNo((f.profession_tax_no as string) ?? '')
+    setGstStatus((f.gst_status as string) ?? '')
+    setGstTaxpayerType((f.gst_taxpayer_type as string) ?? '')
     setBaseCurrency(c.base_currency)
     setFinancialYearStart((f.financial_year_start as string) || getCurrentFinancialYear())
     setTdsApplicable((f.tds_applicable as string) ?? 'Yes')
@@ -780,6 +1030,9 @@ export function CompanyMasterPage() {
     setFactoryLicenceIssuingAuthority((f.factory_licence_issuing_authority as string) ?? '')
     setKspcbConsentNumber((f.kspcb_consent_number as string) ?? '')
     setKspcbConsentValidUpto((f.kspcb_consent_valid_upto as string) ?? '')
+    setFactoryLicenceMaxWorkers((f.factory_licence_max_workers as string) ?? '')
+    setKspcbCategory((f.kspcb_category as string) ?? '')
+    setKspcbConditions((f.kspcb_conditions as string) ?? '')
     setAs9100CertNumber((f.as9100_cert_number as string) ?? '')
     setAs9100CertValidUpto((f.as9100_cert_valid_upto as string) ?? '')
     setNadcapCertNumber((f.nadcap_cert_number as string) ?? '')
@@ -795,46 +1048,96 @@ export function CompanyMasterPage() {
       try {
         if (id && !isNew) {
           // Detail / edit view — load specific company
-          const [companies, companyPlants, docs, docNum, hols] = await Promise.all([
+          // Each sub-resource load is captured individually (ok/error) rather
+          // than swallowed by a bare .catch(() => []) — a genuinely empty
+          // section should never look identical to a failed request.
+          const asResult = <T,>(p: Promise<T>) => p.then((data) => ({ ok: true as const, data })).catch((error: unknown) => ({ ok: false as const, error }))
+          const [companies, companyPlants, docsResult, docNumResult, holsResult, auditResult] = await Promise.all([
             getCompanies(), listPlants(id),
-            listCompanyDocuments(id).catch(() => []),
-            listDocNumbering(id).catch(() => []),
-            listHolidays(id).catch(() => []),
+            asResult(listCompanyDocuments(id)),
+            asResult(listDocNumbering(id)),
+            asResult(listHolidays(id)),
+            asResult(listCompanyAuditTrail(id)),
           ])
           if (!active) return
           const found = companies.find((c) => c.id === id)
           if (found) { setCompany(found); populateForm(found) }
           setPlants(companyPlants)
-          setCompanyDocs(docs)
-          setDocNumberingConfigs(docNum)
-          setHolidays(hols)
+          if (docsResult.ok) { setCompanyDocs(docsResult.data); setDocsLoadError(null) } else { setCompanyDocs([]); setDocsLoadError('Failed to load documents') }
+          if (docNumResult.ok) { setDocNumberingConfigs(docNumResult.data); setDocNumberingLoadError(null) } else { setDocNumberingConfigs([]); setDocNumberingLoadError('Failed to load document numbering configuration') }
+          if (holsResult.ok) { setHolidays(holsResult.data); setHolidaysLoadError(null) } else { setHolidays([]); setHolidaysLoadError('Failed to load public holidays') }
+          if (auditResult.ok) { setAuditEntries(auditResult.data); setAuditError(null) } else { setAuditEntries([]); setAuditError('Failed to load audit trail') }
         } else if (isNew && id === 'new') {
           // New company form — reset everything to blank defaults
-          if (active) resetForm()
+          if (active) {
+            resetForm()
+            // Duplicate action: carry over non-unique, template-like fields
+            // from the source company (set via navigate state) — everything
+            // unique/company-specific stays blank.
+            const duplicateFrom = (location.state as { duplicateFrom?: DuplicateFrom } | null)?.duplicateFrom
+            if (duplicateFrom) {
+              if (duplicateFrom.company_type) setCompanyType(duplicateFrom.company_type)
+              if (duplicateFrom.industry) setIndustry(duplicateFrom.industry)
+              if (duplicateFrom.business_type) setBusinessType(duplicateFrom.business_type)
+              if (duplicateFrom.base_currency) setBaseCurrency(duplicateFrom.base_currency)
+              if (duplicateFrom.country) setCountry(duplicateFrom.country)
+              if (duplicateFrom.timezone) setTimezone(duplicateFrom.timezone)
+              if (duplicateFrom.financial_year_start) setFinancialYearStart(duplicateFrom.financial_year_start)
+              if (duplicateFrom.accounting_standard) setAccountingStandard(duplicateFrom.accounting_standard)
+              if (duplicateFrom.cost_method) setCostMethod(duplicateFrom.cost_method)
+              if (duplicateFrom.tds_applicable) setTdsApplicable(duplicateFrom.tds_applicable)
+              if (duplicateFrom.tcs_applicable) setTcsApplicable(duplicateFrom.tcs_applicable)
+              if (duplicateFrom.audit_required) setAuditRequired(duplicateFrom.audit_required)
+              if (duplicateFrom.rounding_off_level) setRoundingOffLevel(duplicateFrom.rounding_off_level)
+              if (duplicateFrom.registered_address_line1) setRegAddrLine1(duplicateFrom.registered_address_line1)
+              if (duplicateFrom.registered_address_line2) setRegAddrLine2(duplicateFrom.registered_address_line2)
+              if (duplicateFrom.registered_city) setRegCity(duplicateFrom.registered_city)
+              if (duplicateFrom.registered_state) setRegState(duplicateFrom.registered_state)
+              if (duplicateFrom.registered_country) setRegCountry(duplicateFrom.registered_country)
+              if (duplicateFrom.registered_pin) setRegPin(duplicateFrom.registered_pin)
+              if (duplicateFrom.corporate_same_as_registered) setCorpSameAsReg(true)
+              if (duplicateFrom.corporate_address_line1) setCorpAddrLine1(duplicateFrom.corporate_address_line1)
+              if (duplicateFrom.corporate_address_line2) setCorpAddrLine2(duplicateFrom.corporate_address_line2)
+              if (duplicateFrom.corporate_city) setCorpCity(duplicateFrom.corporate_city)
+              if (duplicateFrom.corporate_state) setCorpState(duplicateFrom.corporate_state)
+              if (duplicateFrom.corporate_country) setCorpCountry(duplicateFrom.corporate_country)
+              if (duplicateFrom.corporate_pin) setCorpPin(duplicateFrom.corporate_pin)
+            }
+          }
         } else {
-          // List view — load all companies, fall back to demo if empty
+          // List view — load all companies, do NOT auto-navigate
           const companies = await getCompanies()
           if (!active) return
-          setCompaniesList(companies.length > 0 ? companies : [DEMO_COMPANY])
+          setCompaniesList(companies)
         }
-      } catch {
-        // Static demo mode — no backend, use demo company data
-        if (!active) return
-        if (id && !isNew) {
-          setCompany(DEMO_COMPANY)
-          populateForm(DEMO_COMPANY)
-          setPlants([{ id: 'demo-plant-001', company_id: 'demo-company-001', plant_code: 'PL001', plant_name: 'Bangalore Unit', address: 'Electronic City, Bangalore', gstin: '29AABCS1234A1ZV', created_at: '2024-01-15T10:00:00Z' }])
-          setCompanyDocs([])
-          setDocNumberingConfigs([])
-          setHolidays([])
-        } else if (!isNew) {
-          setCompaniesList([DEMO_COMPANY])
-        }
+      } catch (err: unknown) {
+        const axErr = err as { response?: { data?: { detail?: string } } }
+        if (active) setLoadError(axErr?.response?.data?.detail ?? 'Failed to load')
       } finally { if (active) setLoading(false) }
     }
     load()
     return () => { active = false }
-  }, [id, isNew, populateForm, resetForm])
+  }, [id, isNew, populateForm, resetForm, location.state])
+
+  // Poll while any document's AI read is still running in the background
+  // (extraction_status === 'pending'). Self-terminates once nothing is
+  // pending or after ~1 minute. Uses a ref so the interval isn't torn down
+  // and recreated on every companyDocs update.
+  const companyDocsRef = useRef(companyDocs)
+  useEffect(() => { companyDocsRef.current = companyDocs }, [companyDocs])
+  useEffect(() => {
+    if (isNew || !id) return
+    let ticks = 0
+    const iv = setInterval(() => {
+      const hasPending = companyDocsRef.current.some((d) => d.extraction_status === 'pending')
+      if (!hasPending) { clearInterval(iv); return }
+      ticks += 1
+      if (ticks > 15) { clearInterval(iv); return }
+      listCompanyDocuments(id).then(setCompanyDocs).catch(() => { /* keep existing */ })
+    }, 4000)
+    return () => clearInterval(iv)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNew, id])
 
   // Sync corporate address
   useEffect(() => {
@@ -853,6 +1156,10 @@ export function CompanyMasterPage() {
     try {
       const result = await gstinLookup(cleaned)
       setGstinLookupResult(result)
+
+      // ── Registry-sourced status/taxpayer type — persisted with the company ──
+      if (result.status) setGstStatus(result.status)
+      if (result.taxpayer_type) setGstTaxpayerType(result.taxpayer_type)
 
       // ── Always: extract PAN & state from the GSTIN number itself ────────
       const panFromGstin = cleaned.substring(2, 12)
@@ -940,6 +1247,20 @@ export function CompanyMasterPage() {
     }
   }
 
+  // Export the current company record as a downloadable JSON file (Actions menu).
+  const handleExportCompany = () => {
+    if (!company) return
+    const blob = new Blob([JSON.stringify(company, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${company.company_code || 'company'}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
   // Build payload
   const buildPayload = (): CompanyCreatePayload => ({
     company_code: companyCode.trim().toUpperCase(), legal_name: legalName.trim(), trade_name: shortName.trim() || undefined,
@@ -949,6 +1270,7 @@ export function CompanyMasterPage() {
     iec_code: iecCode.trim().toUpperCase() || undefined, msme_registration: msmeRegistration.trim() || undefined,
     pf_number: pfNumber.trim() || undefined, esi_number: esiNumber.trim() || undefined,
     profession_tax_no: professionTaxNo.trim() || undefined,
+    gst_status: gstStatus || undefined, gst_taxpayer_type: gstTaxpayerType || undefined,
     factory_licence_number: factoryLicenceNumber.trim() || undefined,
     phone: phoneNo.trim() || undefined, mobile_no: mobileNo.trim() || undefined, landline_no: landlineNo.trim() || undefined,
     email: email.trim() || undefined, alternate_email: alternateEmail.trim() || undefined, fax_no: faxNo.trim() || undefined,
@@ -966,13 +1288,73 @@ export function CompanyMasterPage() {
     factory_licence_date: factoryLicenceDate || undefined, factory_licence_valid_upto: factoryLicenceValidUpto || undefined,
     factory_licence_issuing_authority: factoryLicenceIssuingAuthority.trim() || undefined,
     kspcb_consent_number: kspcbConsentNumber.trim() || undefined, kspcb_consent_valid_upto: kspcbConsentValidUpto || undefined,
-    as9100_cert_number: as9100CertNumber.trim() || undefined, as9100_cert_valid_upto: as9100CertValidUpto || undefined,
-    nadcap_cert_number: nadcapCertNumber.trim() || undefined, nadcap_cert_valid_upto: nadcapCertValidUpto || undefined,
+    factory_licence_max_workers: factoryLicenceMaxWorkers.trim() || undefined,
+    kspcb_category: kspcbCategory.trim() || undefined, kspcb_conditions: kspcbConditions.trim() || undefined,
+    // AS9100/NADCAP certificate data now lives in the Documents/Certifications
+    // tiles (CompanyDocument rows with category: "Certification"), not these
+    // legacy Company columns — stop reading/writing them from the UI.
     financial_year_start: financialYearStart || undefined, cost_method: costMethod || undefined,
     tds_applicable: tdsApplicable, tcs_applicable: tcsApplicable,
     accounting_standard: accountingStandard || undefined, audit_required: auditRequired,
     rounding_off_level: roundingOffLevel || undefined, notes: notes.trim() || undefined,
   } as unknown as CompanyCreatePayload)
+
+  // AI auto-fill: apply an extracted company_fields value into the right form
+  // field. Returns false for targets the form doesn't own (AS9100/NADCAP live
+  // in the Certification document tiles, not these Company columns).
+  const COMPANY_FORM_TARGETS = new Set([
+    'cin_number','pan','gstin','iec_code','msme_registration','pf_number','esi_number',
+    'factory_licence_number','factory_licence_date','factory_licence_valid_upto',
+    'factory_licence_issuing_authority','factory_licence_max_workers',
+    'kspcb_consent_number','kspcb_consent_valid_upto','kspcb_category','kspcb_conditions',
+    'bank_name','bank_branch','bank_account_number','bank_ifsc_code','bank_micr_code',
+  ])
+  const applyCompanyField = (target: string, value: string | number | null): boolean => {
+    const v = String(value ?? '')
+    switch (target) {
+      case 'cin_number': setCinNumber(v.toUpperCase()); break
+      case 'pan': setPan(v.toUpperCase()); break
+      case 'gstin': setGstin(v.toUpperCase()); break
+      case 'iec_code': setIecCode(v.toUpperCase()); break
+      case 'msme_registration': setMsmeRegistration(v); break
+      case 'pf_number': setPfNumber(v); break
+      case 'esi_number': setEsiNumber(v); break
+      case 'factory_licence_number': setFactoryLicenceNumber(v.toUpperCase()); break
+      case 'factory_licence_date': setFactoryLicenceDate(v); break
+      case 'factory_licence_valid_upto': setFactoryLicenceValidUpto(v); break
+      case 'factory_licence_issuing_authority': setFactoryLicenceIssuingAuthority(v); break
+      case 'factory_licence_max_workers': setFactoryLicenceMaxWorkers(v); break
+      case 'kspcb_consent_number': setKspcbConsentNumber(v); break
+      case 'kspcb_consent_valid_upto': setKspcbConsentValidUpto(v); break
+      case 'kspcb_category': setKspcbCategory(v); break
+      case 'kspcb_conditions': setKspcbConditions(v); break
+      case 'bank_name': setBankName(v); break
+      case 'bank_branch': setBankBranch(v); break
+      case 'bank_account_number': setBankAccountNumber(v); break
+      case 'bank_ifsc_code': setBankIfscCode(v.toUpperCase()); break
+      case 'bank_micr_code': setBankMicrCode(v); break
+      default: return false
+    }
+    return true
+  }
+  // Aggregate AI-detected company fields across all uploaded docs (latest wins).
+  const aiCompanyFields: { target: string; label: string; value: string | number | null; confidence: number; docName: string; docType: string; formManaged: boolean }[] = []
+  for (const d of companyDocs) {
+    const cf = d.extracted_fields?.company_fields
+    if (!cf) continue
+    for (const [target, fld] of Object.entries(cf)) {
+      if (!fld || fld.value == null || fld.value === '') continue
+      aiCompanyFields.push({
+        target,
+        label: fld.label || target,
+        value: fld.value,
+        confidence: fld.confidence ?? 0,
+        docName: d.doc_number || d.file_name || d.doc_type || 'document',
+        docType: d.extracted_fields?.doc_type || d.doc_type || '',
+        formManaged: COMPANY_FORM_TARGETS.has(target),
+      })
+    }
+  }
 
   // Save
   const handleSave = async () => {
@@ -1029,10 +1411,13 @@ export function CompanyMasterPage() {
         for (const cert of pendingCerts) {
           try {
             const doc = await createCompanyDocument(created.id, {
-              doc_type: cert.type + ' Certificate',
-              doc_number: '',
-              issue_date: new Date().toISOString().slice(0, 10),
-              status: 'Active'
+              doc_type: cert.docType,
+              doc_number: cert.docNumber || undefined,
+              issue_date: cert.issueDate || new Date().toISOString().slice(0, 10),
+              expiry_date: cert.expiryDate || undefined,
+              issuing_authority: cert.issuingAuthority || undefined,
+              status: cert.status || 'Valid',
+              category: 'Certification',
             })
             await uploadDocumentFile(created.id, doc.id, cert.file)
           } catch (certErr) { console.error('Cert upload failed:', certErr) }
@@ -1174,39 +1559,14 @@ export function CompanyMasterPage() {
   }
 
 
-  // Certificate upload handler for header - supports pending and saved
-  const handleCertUpload = async (certType: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    
-    // For new companies, store as pending
-    if (!company) {
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        setPendingCerts(prev => {
-          const filtered = prev.filter(c => c.type !== certType)
-          return [...filtered, { type: certType, file, preview: ev.target?.result as string }]
-        })
-      }
-      reader.readAsDataURL(file)
-      return
-    }
-    
-    // For saved companies, create document and upload file
-    try {
-      const doc = await createCompanyDocument(company.id, {
-        doc_type: certType + ' Certificate',
-        issue_date: new Date().toISOString().slice(0, 10),
-        status: 'Active'
-      })
-      await uploadDocumentFile(company.id, doc.id, file)
-      // Refresh docs
-      const docs = await listCompanyDocuments(company.id)
-      setCompanyDocs(docs)
-    } catch (err: unknown) {
-      const axErr = err as { response?: { data?: { detail?: string } } }
-      alert(axErr?.response?.data?.detail || 'Certificate upload failed')
-    }
+  // Header certification tiles now open CertificationModal (captures number/
+  // dates/authority, not just a bare file) instead of firing a file picker
+  // directly — see the modal's onSavedForCompany/onSavedPending handlers.
+  const handleCertSavedForCompany = (doc: CompanyDocument) => {
+    setCompanyDocs(prev => [...prev, doc])
+  }
+  const handleCertSavedPending = (cert: PendingCert) => {
+    setPendingCerts(prev => [...prev.filter(c => c.key !== cert.key), cert])
   }
 
   // Per-row upload/replace for any document in the Documents tab table (not
@@ -1225,10 +1585,10 @@ export function CompanyMasterPage() {
     }
   }
 
-  const handleCertDelete = async (certType: string, savedDoc?: CompanyDocument) => {
-    setPendingCerts(prev => prev.filter(c => c.type !== certType))
+  const handleCertDelete = async (certKey: string, savedDoc?: CompanyDocument) => {
+    setPendingCerts(prev => prev.filter(c => c.key !== certKey))
     if (!savedDoc || !company) return
-    if (!window.confirm('Remove the saved ' + certType + ' certificate?')) return
+    if (!window.confirm('Remove this certification?')) return
     try {
       await deleteCompanyDocument(company.id, savedDoc.id)
       setCompanyDocs(prev => prev.filter(d => d.id !== savedDoc.id))
@@ -1507,65 +1867,89 @@ export function CompanyMasterPage() {
             </div>
           </div>
 
-          {/* 3. Certificate upload slots - ALWAYS visible */}
+          {/* 3. Certification tiles - only real (saved or pending) certifications
+                 render here, plus a single "+ Add" tile — no more hardcoded
+                 empty COI/NADCAP/AS9100/ISO placeholders. Clicking "+ Add"
+                 opens CertificationModal to capture type/number/dates/
+                 authority + file in one go. */}
           <div className="flex items-center gap-3 flex-none">
-            {['COI', 'NADCAP', 'AS9100', 'ISO'].map(certType => {
-              const pending = pendingCerts.find(c => c.type === certType)
-              const saved = companyDocs.find(d => 
-                d.doc_type?.toLowerCase().includes(certType.toLowerCase()) ||
-                (certType === 'AS9100' && d.doc_type?.toLowerCase().includes('as 9100'))
-              )
-              const hasFile = pending?.preview || saved?.file_path
-              const fileName = pending?.file?.name || saved?.file_name || ''
-              const isPdf = /\.pdf$/i.test(fileName) || pending?.file?.type === 'application/pdf' || saved?.file_mime_type === 'application/pdf'
-              
+            {(() => {
+              const certDocs = companyDocs.filter(d => d.category === 'Certification')
+              const tiles = [
+                ...certDocs.map(doc => ({ key: doc.id, label: doc.doc_type.replace(/ Certificate$/i, '').slice(0, 10), pending: undefined, saved: doc })),
+                ...pendingCerts.map(c => ({ key: c.key, label: c.label.replace(/ Certificate$/i, '').slice(0, 10), pending: c, saved: undefined })),
+              ]
               return (
-                <div key={certType} className="relative group/cert flex-none" title={certType + ' Certificate'}>
-                  <div className="h-14 w-[72px] flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-md bg-gray-50 overflow-hidden hover:border-blue-400 hover:bg-blue-50 transition-colors">
-                    {hasFile && !isPdf ? (
-                      <img 
-                        src={pending?.preview || saved?.file_path || ''} 
-                        alt={certType} 
-                        className="w-full h-full object-contain"
-                      />
-                    ) : hasFile && isPdf ? (
-                      <a
-                        href={saved?.file_path || undefined}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(e) => { if (!saved?.file_path) e.preventDefault() }}
-                        className="flex flex-col items-center justify-center h-full w-full text-[#005c87]"
-                      >
-                        <FileText size={16} />
-                        <span className="text-[8px] font-semibold mt-0.5">{certType} PDF</span>
-                      </a>
-                    ) : (
-                      <>
-                        <Upload size={12} className="text-gray-400 mb-0.5" />
-                        <span className="text-[9px] font-semibold text-gray-500">{certType}</span>
-                      </>
-                    )}
-                    <label className="absolute inset-0 cursor-pointer" style={{ pointerEvents: hasFile && isPdf ? 'none' : 'auto' }}>
-                      <input 
-                        type="file" 
-                        accept="image/png,image/jpeg,image/svg+xml,application/pdf" 
-                        className="hidden" 
-                        onChange={(e) => handleCertUpload(certType, e)} 
-                      />
-                    </label>
-                  </div>
-                  {(pending || saved) && (
-                    <button
-                      onClick={() => handleCertDelete(certType, saved)}
-                      title={'Remove ' + certType}
-                      className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover/cert:opacity-100 transition-opacity hover:bg-red-600"
-                    >
-                      <Trash2 size={8} />
-                    </button>
-                  )}
-                </div>
+                <>
+                  {tiles.map(({ key, label, pending, saved }) => {
+                    const hasFile = pending?.preview || saved?.file_path
+                    const fileName = pending?.file?.name || saved?.file_name || ''
+                    const isPdf = /\.pdf$/i.test(fileName) || pending?.file?.type === 'application/pdf' || saved?.file_mime_type === 'application/pdf'
+                    return (
+                      <div key={key} className="relative group/cert flex-none" title={label + ' Certificate'}>
+                        <div
+                          className="h-14 w-[72px] flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-md bg-gray-50 overflow-hidden hover:border-blue-400 hover:bg-blue-50 transition-colors cursor-pointer"
+                          onClick={() => { if (!hasFile) { setCertModalKey(key); setShowCertModal(true) } }}
+                        >
+                          {hasFile && !isPdf ? (
+                            <img
+                              src={pending?.preview || saved?.file_path || ''}
+                              alt={label}
+                              className="w-full h-full object-contain"
+                            />
+                          ) : hasFile && isPdf ? (
+                            <a
+                              href={saved?.file_path || undefined}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => { e.stopPropagation(); if (!saved?.file_path) e.preventDefault() }}
+                              className="flex flex-col items-center justify-center h-full w-full text-[#005c87]"
+                            >
+                              <FileText size={16} />
+                              <span className="text-[8px] font-semibold mt-0.5">{label} PDF</span>
+                            </a>
+                          ) : (
+                            <>
+                              <Upload size={12} className="text-gray-400 mb-0.5" />
+                              <span className="text-[9px] font-semibold text-gray-500">{label}</span>
+                            </>
+                          )}
+                        </div>
+                        {(pending || saved) && (
+                          <button
+                            onClick={() => handleCertDelete(key, saved)}
+                            title={'Remove ' + label}
+                            className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover/cert:opacity-100 transition-opacity hover:bg-red-600"
+                          >
+                            <Trash2 size={8} />
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (company) {
+                        // Saved company — use the same Upload Document flow as the Documents tab
+                        // (lets the user pick any type/category, not just certifications) instead of
+                        // a separate silo that only knew how to write category="Certification".
+                        setDroppedDocFile(null); setShowAddDocument(true)
+                      } else {
+                        // Not-yet-saved company — no companyId to attach a document to yet, so
+                        // stage it locally via CertificationModal's pending-cert flow until save.
+                        setCertModalKey('__new__'); setShowCertModal(true)
+                      }
+                    }}
+                    title={company ? "Upload Document" : "Add Certification"}
+                    className="h-14 w-[72px] flex-none flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-md bg-gray-50 hover:border-blue-400 hover:bg-blue-50 transition-colors text-gray-400 hover:text-blue-500"
+                  >
+                    <Plus size={14} />
+                    <span className="text-[9px] font-semibold mt-0.5">Add</span>
+                  </button>
+                </>
               )
-            })}
+            })()}
           </div>
 
 
@@ -1581,22 +1965,61 @@ export function CompanyMasterPage() {
                 Actions <ChevronDown size={12} />
               </Button>
               {showActionsMenu && (
-                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[160px] py-1">
-                  {company && (
-                    <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 text-gray-700 flex items-center gap-2" onClick={handleSeedHolidays}>
-                      <Calendar size={13} />{seedingHolidays ? "Seeding…" : "Seed Holidays"}
-                    </button>
-                  )}
-                  <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 text-gray-700" onClick={() => { setShowActionsMenu(false); navigate("/masters/company/new") }}>
-                    Duplicate
+                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[170px] py-1">
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 text-gray-700"
+                    onClick={() => { setShowActionsMenu(false); handleSave() }}
+                  >
+                    Save
                   </button>
-                  {company && currentStatus === "Active" && (
-                    <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 text-red-600" onClick={handleDeactivate} disabled={deactivating}>
-                      {deactivating ? "Deactivating…" : "Deactivate"}
-                    </button>
-                  )}
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 text-gray-700"
+                    onClick={() => { setShowActionsMenu(false); window.print() }}
+                  >
+                    Print
+                  </button>
+                  <button
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    onClick={() => { setShowActionsMenu(false); handleExportCompany() }}
+                    disabled={!company}
+                    title={!company ? "Save the company first to export" : undefined}
+                  >
+                    Export
+                  </button>
                   {company && (
                     <>
+                      <div className="my-1 border-t border-gray-100" />
+                      <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 text-gray-700 flex items-center gap-2" onClick={handleSeedHolidays}>
+                        <Calendar size={13} />{seedingHolidays ? "Seeding…" : "Seed Holidays"}
+                      </button>
+                      <button
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 text-gray-700"
+                        onClick={() => {
+                          setShowActionsMenu(false)
+                          const duplicateFrom: DuplicateFrom = {
+                            company_type: company.company_type, industry: company.industry, business_type: company.business_type,
+                            base_currency: company.base_currency, country: company.country, timezone: company.timezone,
+                            financial_year_start: company.financial_year_start, accounting_standard: company.accounting_standard,
+                            cost_method: company.cost_method, tds_applicable: company.tds_applicable, tcs_applicable: company.tcs_applicable,
+                            audit_required: company.audit_required, rounding_off_level: company.rounding_off_level,
+                            registered_address_line1: company.registered_address_line1, registered_address_line2: company.registered_address_line2,
+                            registered_city: company.registered_city, registered_state: company.registered_state,
+                            registered_country: company.registered_country, registered_pin: company.registered_pin,
+                            corporate_same_as_registered: company.corporate_same_as_registered,
+                            corporate_address_line1: company.corporate_address_line1, corporate_address_line2: company.corporate_address_line2,
+                            corporate_city: company.corporate_city, corporate_state: company.corporate_state,
+                            corporate_country: company.corporate_country, corporate_pin: company.corporate_pin,
+                          }
+                          navigate("/masters/company/new", { state: { duplicateFrom } })
+                        }}
+                      >
+                        Duplicate
+                      </button>
+                      {currentStatus === "Active" && (
+                        <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 text-red-600" onClick={handleDeactivate} disabled={deactivating}>
+                          {deactivating ? "Deactivating…" : "Deactivate"}
+                        </button>
+                      )}
                       <div className="my-1 border-t border-gray-100" />
                       <button className="w-full text-left px-4 py-2 text-sm hover:bg-red-50 text-red-700 flex items-center gap-2" onClick={handleDeleteCompany}>
                         <Trash2 size={13} /> Delete Company
@@ -1651,7 +2074,17 @@ export function CompanyMasterPage() {
                       </span>
                       <ConfidenceBadge score={gstinLookupResult.confidence} />
                     </div>
-                    <span className="text-[10px] text-gray-400 bg-white px-2 py-0.5 rounded border">{gstinLookupResult.source}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-400 bg-white px-2 py-0.5 rounded border">{gstinLookupResult.source}</span>
+                      <button
+                        type="button"
+                        onClick={() => setGstinLookupResult(null)}
+                        title="Dismiss"
+                        className="text-gray-400 hover:text-gray-600 hover:bg-white rounded p-0.5 transition-colors"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 text-xs">
                     {[
@@ -1707,12 +2140,28 @@ export function CompanyMasterPage() {
                 </FieldRow>
                 <FieldRow label="Company Type" required><select value={companyType} onChange={(e) => setCompanyType(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs bg-white">{COMPANY_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></FieldRow>
                 <FieldRow label="Incorp. Date"><input type="date" value={incorporationDate} onChange={(e) => setIncorporationDate(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
-                <FieldRow label="Status"><select value={statusField} onChange={(e) => setStatusField(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs bg-white">{STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></FieldRow>
+                <FieldRow label="Status"><div className="flex items-center gap-2"><span className="text-xs font-medium px-2 py-0.5 rounded border border-gray-200 bg-gray-50 text-gray-700">{currentStatus}</span><span className="text-[10px] text-gray-400" title="Status changes through the Activate / Deactivate actions, not this field">via Activate / Deactivate</span></div></FieldRow>
               </SectionCard>
 
               <SectionCard icon={<Shield size={13} className="text-green-600" />} title="Registration" color="bg-green-50/60">
                 <FieldRow label="PAN"><input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} maxLength={10} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs font-mono" /></FieldRow>
-                <FieldRow label="GSTIN"><input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} maxLength={15} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs font-mono" /></FieldRow>
+                <FieldRow label="GSTIN">
+                  <input value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} maxLength={15} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs font-mono" />
+                  {(gstStatus || gstTaxpayerType) && (
+                    <div className="mt-1 flex items-center gap-1.5">
+                      {gstStatus && (
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${gstStatus === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`} title="From GSTIN registry lookup">
+                          {gstStatus}
+                        </span>
+                      )}
+                      {gstTaxpayerType && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600" title="From GSTIN registry lookup">
+                          {gstTaxpayerType}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </FieldRow>
                 <FieldRow label="TAN"><input value={tan} onChange={(e) => setTan(e.target.value.toUpperCase())} maxLength={10} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs font-mono" /></FieldRow>
                 <FieldRow label="IEC"><input value={iecCode} onChange={(e) => setIecCode(e.target.value.toUpperCase())} maxLength={10} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs font-mono" /></FieldRow>
                 <FieldRow label="MSME"><input value={msmeRegistration} onChange={(e) => setMsmeRegistration(e.target.value)} maxLength={30} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
@@ -1730,66 +2179,17 @@ export function CompanyMasterPage() {
                 <FieldRow label="Costing"><select value={costMethod} onChange={(e) => setCostMethod(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs bg-white">{COSTING_METHOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></FieldRow>
               </SectionCard>
 
-              <SectionCard icon={<Phone size={13} className="text-purple-600" />} title="Contact" color="bg-purple-50/60">
-                <FieldRow label="Phone"><input value={phoneNo} onChange={(e) => setPhoneNo(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
-                <FieldRow label="Mobile"><input value={mobileNo} onChange={(e) => setMobileNo(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
-                <FieldRow label="Email"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
-                <FieldRow label="Alt Email"><input type="email" value={alternateEmail} onChange={(e) => setAlternateEmail(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
-                <FieldRow label="Fax"><input value={faxNo} onChange={(e) => setFaxNo(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
-                <FieldRow label="Website"><input value={website} onChange={(e) => setWebsite(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
+              <SectionCard icon={<FileText size={13} className="text-orange-600" />} title="Licences" color="bg-orange-50/60">
+                <FieldRow label="Factory Licence No."><input value={factoryLicenceNumber} onChange={(e) => setFactoryLicenceNumber(e.target.value.toUpperCase())} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs font-mono" /></FieldRow>
+                <FieldRow label="Licence Date"><input type="date" value={factoryLicenceDate} onChange={(e) => setFactoryLicenceDate(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
+                <FieldRow label="Licence Valid Upto"><input type="date" value={factoryLicenceValidUpto} onChange={(e) => setFactoryLicenceValidUpto(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
+                <FieldRow label="Issuing Authority"><input value={factoryLicenceIssuingAuthority} onChange={(e) => setFactoryLicenceIssuingAuthority(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
+                <FieldRow label="Max Workers"><input value={factoryLicenceMaxWorkers} onChange={(e) => setFactoryLicenceMaxWorkers(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
+                <FieldRow label="KSPCB Consent No."><input value={kspcbConsentNumber} onChange={(e) => setKspcbConsentNumber(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
+                <FieldRow label="KSPCB Valid Upto"><input type="date" value={kspcbConsentValidUpto} onChange={(e) => setKspcbConsentValidUpto(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
+                <FieldRow label="KSPCB Category"><input value={kspcbCategory} onChange={(e) => setKspcbCategory(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" placeholder="Red / Orange / Green / White" /></FieldRow>
+                <FieldRow label="KSPCB Conditions"><input value={kspcbConditions} onChange={(e) => setKspcbConditions(e.target.value)} className="w-full border border-gray-200 rounded px-2 py-0.5 text-xs" /></FieldRow>
               </SectionCard>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Registered Address</h3>
-                <div className="space-y-3.5">
-                  <Input label="Address Line 1" value={regAddrLine1} onChange={(e) => setRegAddrLine1(e.target.value)} />
-                  <Input label="Address Line 2" value={regAddrLine2} onChange={(e) => setRegAddrLine2(e.target.value)} />
-                  <div className="grid grid-cols-2 gap-3">
-                    <Input label="City" value={regCity} onChange={(e) => setRegCity(e.target.value)} />
-                    <Select label="State" options={INDIAN_STATES} value={regState} onChange={(e) => setRegState(e.target.value)} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Select label="Country" options={COUNTRY_OPTIONS} value={regCountry} onChange={(e) => setRegCountry(e.target.value)} />
-                    <Input label="PIN" value={regPin} onChange={(e) => setRegPin(e.target.value)} maxLength={6} className="font-mono" />
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-gray-700">Corporate Address</h3>
-                  <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                    <input type="checkbox" checked={corpSameAsReg} onChange={(e) => setCorpSameAsReg(e.target.checked)} className="w-4 h-4 rounded" />
-                    Same as Registered
-                  </label>
-                </div>
-                <div className="space-y-3.5">
-                  <Input label="Address Line 1" value={corpAddrLine1} onChange={(e) => setCorpAddrLine1(e.target.value)} disabled={corpSameAsReg} />
-                  <Input label="Address Line 2" value={corpAddrLine2} onChange={(e) => setCorpAddrLine2(e.target.value)} disabled={corpSameAsReg} />
-                  <div className="grid grid-cols-2 gap-3">
-                    <Input label="City" value={corpCity} onChange={(e) => setCorpCity(e.target.value)} disabled={corpSameAsReg} />
-                    <Select label="State" options={INDIAN_STATES} value={corpState} onChange={(e) => setCorpState(e.target.value)} disabled={corpSameAsReg} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Select label="Country" options={COUNTRY_OPTIONS} value={corpCountry} onChange={(e) => setCorpCountry(e.target.value)} disabled={corpSameAsReg} />
-                    <Input label="PIN" value={corpPin} onChange={(e) => setCorpPin(e.target.value)} disabled={corpSameAsReg} maxLength={6} className="font-mono" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">Banking Information</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Input label="Bank Name" value={bankName} onChange={(e) => setBankName(e.target.value)} />
-                <Input label="Branch" value={bankBranch} onChange={(e) => setBankBranch(e.target.value)} />
-                <Input label="Account No." value={bankAccountNumber} onChange={(e) => setBankAccountNumber(e.target.value)} className="font-mono" />
-                <Select label="Account Type" options={BANK_ACCOUNT_TYPE_OPTIONS} value={bankAccountType} onChange={(e) => setBankAccountType(e.target.value)} />
-                <Input label="IFSC" value={bankIfscCode} onChange={(e) => setBankIfscCode(e.target.value.toUpperCase())} className="font-mono" maxLength={11} />
-                <Input label="MICR" value={bankMicrCode} onChange={(e) => setBankMicrCode(e.target.value)} className="font-mono" maxLength={9} />
-                <Input label="UPI ID" value={bankUpiId} onChange={(e) => setBankUpiId(e.target.value)} />
-              </div>
             </div>
           </>
         )}
@@ -1867,54 +2267,9 @@ export function CompanyMasterPage() {
           </div>
         )}
 
-        {/* Factory Tab */}
-        {activeTab === 'factory' && (
-          <div className="space-y-5">
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="text-sm font-semibold text-gray-700 mb-5">Factory Licence</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <Input label="Factory Licence No." value={factoryLicenceNumber} onChange={(e) => setFactoryLicenceNumber(e.target.value.toUpperCase())} />
-                <Input label="Date of Issue" type="date" value={factoryLicenceDate} onChange={(e) => setFactoryLicenceDate(e.target.value)} />
-                <Input label="Valid Upto" type="date" value={factoryLicenceValidUpto} onChange={(e) => setFactoryLicenceValidUpto(e.target.value)} />
-                <Input label="Issuing Authority" value={factoryLicenceIssuingAuthority} onChange={(e) => setFactoryLicenceIssuingAuthority(e.target.value)} />
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="text-sm font-semibold text-gray-700 mb-5">KSPCB / Environment</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <Input label="KSPCB Consent No." value={kspcbConsentNumber} onChange={(e) => setKspcbConsentNumber(e.target.value)} />
-                <Input label="KSPCB Consent Valid Upto" type="date" value={kspcbConsentValidUpto} onChange={(e) => setKspcbConsentValidUpto(e.target.value)} />
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="text-sm font-semibold text-gray-700 mb-5">Certifications</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <Input label="AS9100 Certificate No." value={as9100CertNumber} onChange={(e) => setAs9100CertNumber(e.target.value)} className="font-mono" />
-                <Input label="AS9100 Valid Upto" type="date" value={as9100CertValidUpto} onChange={(e) => setAs9100CertValidUpto(e.target.value)} />
-                <Input label="NADCAP Certificate No." value={nadcapCertNumber} onChange={(e) => setNadcapCertNumber(e.target.value)} className="font-mono" />
-                <Input label="NADCAP Valid Upto" type="date" value={nadcapCertValidUpto} onChange={(e) => setNadcapCertValidUpto(e.target.value)} />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Statutory Tab */}
-        {activeTab === 'statutory' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h2 className="text-sm font-semibold text-gray-700 mb-5">Statutory & Compliance</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <Input label="PAN" value={pan} onChange={(e) => setPan(e.target.value.toUpperCase())} maxLength={10} className="font-mono" />
-              <Input label="GSTIN" value={gstin} onChange={(e) => setGstin(e.target.value.toUpperCase())} maxLength={15} className="font-mono" />
-              <Input label="TAN" value={tan} onChange={(e) => setTan(e.target.value.toUpperCase())} maxLength={10} className="font-mono" />
-              <Input label="IEC Code" value={iecCode} onChange={(e) => setIecCode(e.target.value.toUpperCase())} maxLength={10} className="font-mono" />
-              <Input label="MSME Registration" value={msmeRegistration} onChange={(e) => setMsmeRegistration(e.target.value)} maxLength={30} />
-              <Input label="PF Number" value={pfNumber} onChange={(e) => setPfNumber(e.target.value.toUpperCase())} maxLength={30} />
-              <Input label="ESI Number" value={esiNumber} onChange={(e) => setEsiNumber(e.target.value)} maxLength={20} />
-              <Input label="Profession Tax No." value={professionTaxNo} onChange={(e) => setProfessionTaxNo(e.target.value)} maxLength={30} />
-            </div>
-          </div>
-        )}
-
+        {/* Statutory Tab — includes the former Factory Licence tab's fields
+            (relocated here, tab removed; Certifications now live in the
+            header tiles/Documents tab as CompanyDocument rows instead) */}
         {/* Business Tab */}
         {activeTab === 'business' && (
           <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -1933,17 +2288,60 @@ export function CompanyMasterPage() {
         {/* Documents Tab - NOW CONNECTED TO API */}
         {activeTab === 'documents' && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200">
-              <h2 className="text-sm font-semibold text-gray-700">Documents & Certifications</h2>
-              {company && <Button variant="secondary" size="sm" icon={<Plus size={13} />} onClick={() => setShowAddDocument(true)}>Add Document</Button>}
+            <div className="px-5 py-3.5 border-b border-gray-200">
+              <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><FileText size={14} className="text-[#005c87]" /> Documents & Certifications</h2>
             </div>
+            {aiCompanyFields.length > 0 && (
+              <div className="mx-5 mt-3 rounded-lg border border-violet-200 bg-violet-50/50 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-violet-700"><Sparkles size={12} /> AI-detected company fields — review &amp; apply</span>
+                  <button
+                    type="button"
+                    className="rounded-md bg-violet-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                    onClick={() => { aiCompanyFields.filter(f => f.formManaged).forEach(f => applyCompanyField(f.target, f.value)) }}
+                  >
+                    Apply all to form
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead><tr className="border-b border-violet-100 text-left text-[10px] uppercase tracking-wide text-violet-400">
+                      <th className="pb-1.5 pr-2 font-medium">Type</th><th className="pb-1.5 pr-2 font-medium">Field</th><th className="pb-1.5 pr-2 font-medium">Value</th><th className="pb-1.5 pr-2 font-medium">Confidence</th><th className="pb-1.5 font-medium"></th>
+                    </tr></thead>
+                    <tbody>
+                      {aiCompanyFields.map((fld, i) => (
+                        <tr key={fld.target + i} className="border-b border-violet-50">
+                          <td className="py-1.5 pr-2 text-gray-500">{fld.docType}</td>
+                          <td className="py-1.5 pr-2 font-medium text-gray-700">{fld.label}</td>
+                          <td className="py-1.5 pr-2 font-mono text-gray-800">{String(fld.value)}</td>
+                          <td className="py-1.5 pr-2"><ConfidenceBadge score={fld.confidence} /></td>
+                          <td className="py-1.5 text-right">
+                            {fld.formManaged ? (
+                              <button type="button" className="rounded border border-violet-300 px-2 py-0.5 text-[11px] font-medium text-violet-700 hover:bg-violet-100" onClick={() => applyCompanyField(fld.target, fld.value)}>Apply</button>
+                            ) : (
+                              <span className="text-[10px] text-gray-400" title="AS9100/NADCAP are managed in the Certification tiles">tile-managed</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-2 text-[10px] text-violet-500">Applied values fill the form — review, then Save to persist. AS9100/NADCAP fields are managed in the Certification document tiles.</p>
+              </div>
+            )}
+            {docsLoadError && (
+              <div className="mx-5 mt-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{docsLoadError}</div>
+            )}
             {companyDocs.length === 0 ? (
-              <div className="px-5 py-10 text-center text-sm text-gray-400">No documents. Click "Add Document" to add one.</div>
+              <div className="px-5 py-10 text-center text-sm text-gray-400">
+                {docsLoadError ? 'Unable to load documents.' : company ? 'No documents. Drag & drop a file below to add one.' : 'No documents yet — save the company first.'}
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead><tr className="bg-gray-50 border-b border-gray-200">
-                    {['Type', 'Number', 'Rev', 'Issue', 'Expiry', 'Authority', 'Status', 'Action'].map((h) => (
+                    {['Document Type', 'Document Number', 'Revision', 'Issue Date', 'Expiry Date', 'Issuing Authority', 'File', 'Status', 'AI Read', 'Action'].map((h) => (
                       <th key={h} className="text-left py-2.5 px-3 text-[11px] font-semibold text-gray-500 uppercase">{h}</th>
                     ))}
                   </tr></thead>
@@ -1956,25 +2354,79 @@ export function CompanyMasterPage() {
                         <td className="py-2.5 px-3 text-gray-600">{doc.issue_date ? formatDate(doc.issue_date) : '-'}</td>
                         <td className="py-2.5 px-3 text-gray-600">{doc.expiry_date ? formatDate(doc.expiry_date) : '-'}</td>
                         <td className="py-2.5 px-3 text-gray-600">{doc.issuing_authority || '-'}</td>
+                        <td className="py-2.5 px-3">
+                          {doc.file_path ? (
+                            <a href={doc.file_path} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[#1a73e8] hover:underline max-w-[160px]" title={doc.file_name || 'View file'}>
+                              <FileText size={13} className="text-red-500 shrink-0" />
+                              <span className="truncate">{doc.file_name || 'View file'}</span>
+                            </a>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
+                        </td>
                         <td className="py-2.5 px-3"><span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${DOC_STATUS_CLASSES[doc.status] ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>{doc.status}</span></td>
                         <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-2">
-                            {doc.file_path && (
-                              <a href={doc.file_path} target="_blank" rel="noreferrer" title={doc.file_name || 'View file'}>
-                                <FileText size={13} className="text-[#005c87] hover:text-blue-600" />
-                              </a>
+                          {doc.extraction_status === 'pending' && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-amber-600"><Loader2 size={11} className="animate-spin" /> Reading…</span>
+                          )}
+                          {(doc.extraction_status === 'success' || doc.extraction_status === 'partial') && (
+                            <button type="button" onClick={() => { setEditingDoc(doc); setShowEditDocument(true) }} className="inline-flex items-center gap-1 text-[10px] text-[#005c87] hover:underline">
+                              <Sparkles size={11} /> Review AI fields
+                            </button>
+                          )}
+                          {doc.extraction_status === 'failed' && <span className="text-[10px] text-red-500">AI read failed</span>}
+                          {(doc.extraction_status === 'unsupported_file_type' || !doc.extraction_status) && <span className="text-[10px] text-gray-300">—</span>}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2.5 relative">
+                            {doc.file_path ? (
+                              <>
+                                <a href={doc.file_path} download={doc.file_name || undefined} title="Download">
+                                  <Download size={13} className="text-gray-400 hover:text-blue-500" />
+                                </a>
+                                <a href={doc.file_path} target="_blank" rel="noreferrer" title="View">
+                                  <Eye size={13} className="text-gray-400 hover:text-blue-500" />
+                                </a>
+                              </>
+                            ) : (
+                              <label className="cursor-pointer" title="Upload file">
+                                <Upload size={13} className="text-gray-400 hover:text-blue-500" />
+                                <input
+                                  type="file"
+                                  accept="image/png,image/jpeg,image/svg+xml,application/pdf"
+                                  className="hidden"
+                                  onChange={(e) => handleDocFileUpload(doc.id, e)}
+                                />
+                              </label>
                             )}
-                            <label className="cursor-pointer" title={doc.file_path ? 'Replace file' : 'Upload file'}>
-                              <Upload size={13} className="text-gray-400 hover:text-blue-500" />
-                              <input
-                                type="file"
-                                accept="image/png,image/jpeg,image/svg+xml,application/pdf"
-                                className="hidden"
-                                onChange={(e) => handleDocFileUpload(doc.id, e)}
-                              />
-                            </label>
-                            <button title="Edit" onClick={() => { setEditingDoc(doc); setShowEditDocument(true) }}><Pencil size={13} className="text-gray-400 hover:text-blue-500" /></button>
-                            <button title="Delete" onClick={() => handleDeleteDocument(doc.id)}><Trash2 size={13} className="text-gray-400 hover:text-red-500" /></button>
+                            <button title="More actions" onClick={() => setOpenDocActionMenu((prev) => (prev === doc.id ? null : doc.id))}>
+                              <MoreVertical size={13} className="text-gray-400 hover:text-gray-600" />
+                            </button>
+                            {openDocActionMenu === doc.id && (
+                              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[140px] py-1 text-left normal-case">
+                                <label className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-gray-700 flex items-center gap-2 cursor-pointer">
+                                  <Upload size={12} />{doc.file_path ? 'Replace File' : 'Upload File'}
+                                  <input
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/svg+xml,application/pdf"
+                                    className="hidden"
+                                    onChange={(e) => { handleDocFileUpload(doc.id, e); setOpenDocActionMenu(null) }}
+                                  />
+                                </label>
+                                <button
+                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 text-gray-700 flex items-center gap-2"
+                                  onClick={() => { setEditingDoc(doc); setShowEditDocument(true); setOpenDocActionMenu(null) }}
+                                >
+                                  <Pencil size={12} />Edit Details
+                                </button>
+                                <button
+                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-50 text-red-600 flex items-center gap-2"
+                                  onClick={() => { handleDeleteDocument(doc.id); setOpenDocActionMenu(null) }}
+                                >
+                                  <Trash2 size={12} />Delete
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1983,9 +2435,32 @@ export function CompanyMasterPage() {
                 </table>
               </div>
             )}
-            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 text-center">
-              <div className="border-2 border-dashed border-gray-300 rounded-lg py-6 text-sm text-gray-400 hover:border-[#005c87] cursor-pointer" onClick={() => company && setShowAddDocument(true)}>
-                <Upload size={20} className="mx-auto mb-1 text-gray-400" />Click to add a document
+            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50">
+              {company ? (
+                <div
+                  className={`border-2 border-dashed rounded-lg py-6 text-sm text-center cursor-pointer transition-colors ${docDropActive ? 'border-[#005c87] bg-blue-50 text-[#005c87]' : 'border-gray-300 text-gray-400 hover:border-[#005c87]'}`}
+                  onClick={() => { setDroppedDocFile(null); setShowAddDocument(true) }}
+                  onDragOver={(e) => { e.preventDefault(); setDocDropActive(true) }}
+                  onDragLeave={() => setDocDropActive(false)}
+                  onDrop={(e) => {
+                    e.preventDefault(); setDocDropActive(false)
+                    const dropped = e.dataTransfer.files?.[0]
+                    if (dropped) { setDroppedDocFile(dropped); setShowAddDocument(true) }
+                  }}
+                >
+                  <Upload size={20} className="mx-auto mb-1" />
+                  Drag &amp; drop files or click to upload (PDF, JPG, PNG)
+                </div>
+              ) : (
+                <div className="border-2 border-dashed border-gray-200 rounded-lg py-6 text-sm text-gray-300 italic text-center">
+                  Save the company first to add documents
+                </div>
+              )}
+              <div className="mt-3 flex items-center justify-end gap-4 text-[11px] text-gray-500">
+                <span className="inline-flex items-center gap-1"><CheckCircle2 size={12} className="text-green-600" /> Valid</span>
+                <span className="inline-flex items-center gap-1"><CheckCircle2 size={12} className="text-blue-600" /> Permanent</span>
+                <span className="inline-flex items-center gap-1"><AlertTriangle size={12} className="text-yellow-500" /> Expiring Soon</span>
+                <span className="inline-flex items-center gap-1"><XCircle size={12} className="text-red-500" /> Expired</span>
               </div>
             </div>
           </div>
@@ -1998,23 +2473,28 @@ export function CompanyMasterPage() {
             <div className="space-y-4">
               <Textarea label="Notes" rows={4} placeholder="Add internal notes..." value={notes} onChange={(e) => setNotes(e.target.value)} />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-gray-100">
-                <div><p className="text-xs text-gray-500 mb-0.5">Created By</p><p className="text-sm font-medium text-gray-700">{company?.created_by ?? '-'}</p></div>
+                <div><p className="text-xs text-gray-500 mb-0.5">Created By</p><p className="text-sm font-medium text-gray-700">{company?.created_by_name ?? '-'}</p></div>
                 <div><p className="text-xs text-gray-500 mb-0.5">Created On</p><p className="text-sm font-medium text-gray-700">{company?.created_at ? formatDate(company.created_at) : '-'}</p></div>
-                <div><p className="text-xs text-gray-500 mb-0.5">Modified By</p><p className="text-sm font-medium text-gray-700">{company?.updated_by ?? '-'}</p></div>
+                <div><p className="text-xs text-gray-500 mb-0.5">Modified By</p><p className="text-sm font-medium text-gray-700">{company?.updated_by_name || '-'}</p></div>
                 <div><p className="text-xs text-gray-500 mb-0.5">Modified On</p><p className="text-sm font-medium text-gray-700">{company?.updated_at ? formatDate(company.updated_at) : '-'}</p></div>
               </div>
               {company && (
                 <div className="pt-4 border-t border-gray-100">
-                  <AuditTrailPanel
-                    entries={[
-                      company.created_at
-                        ? { user: String(company.created_by ?? 'System'), action: 'Company created', timestamp: company.created_at }
-                        : null,
-                      company.updated_at && company.updated_at !== company.created_at
-                        ? { user: String(company.updated_by ?? 'System'), action: `Company updated — status: ${company.status}`, timestamp: company.updated_at }
-                        : null,
-                    ].filter(Boolean) as import('../../components/ui').AuditEntry[]}
-                  />
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Audit Trail</h3>
+                  {auditError && (
+                    <div className="mb-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{auditError}</div>
+                  )}
+                  {!auditError && auditEntries.length === 0 && (
+                    <p className="text-xs text-gray-400">No audit events recorded yet.</p>
+                  )}
+                  {auditEntries.length > 0 && (
+                    <AuditTrailPanel
+                      // Endpoint returns newest-first; the panel renders oldest-last.
+                      entries={[...auditEntries].reverse().map((e) => ({
+                        user: e.user, action: e.action, timestamp: e.timestamp, comment: e.comment ?? undefined, userRole: e.user_role ?? undefined,
+                      }))}
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -2027,10 +2507,14 @@ export function CompanyMasterPage() {
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-sm font-semibold text-gray-700">Plant Master</h2>
-                {company && <Button variant="secondary" size="sm" onClick={() => setShowAddPlant(true)} icon={<Plus size={13} />}>Add Plant</Button>}
+                {company ? (
+                  <Button variant="secondary" size="sm" onClick={() => setShowAddPlant(true)} icon={<Plus size={13} />}>Add Plant</Button>
+                ) : (
+                  <span className="text-xs text-gray-400 italic">Save the company first to add plants</span>
+                )}
               </div>
               {plants.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">No plants added.</p>
+                <p className="text-sm text-gray-400 text-center py-6">{company ? 'No plants added.' : 'Save the company first to add plants.'}</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm"><thead><tr className="border-b border-gray-200">
@@ -2064,10 +2548,17 @@ export function CompanyMasterPage() {
                   <h2 className="text-sm font-semibold text-gray-700">Document Numbering</h2>
                   <p className="text-xs text-gray-400 mt-0.5">Auto-numbering for RFQ, PO, SO, NCR, etc.</p>
                 </div>
-                {company && <Button variant="secondary" size="sm" onClick={() => setShowAddDocNumbering(true)} icon={<Plus size={13} />}>Add Numbering</Button>}
+                {company ? (
+                  <Button variant="secondary" size="sm" onClick={() => setShowAddDocNumbering(true)} icon={<Plus size={13} />}>Add Numbering</Button>
+                ) : (
+                  <span className="text-xs text-gray-400 italic">Save the company first to configure numbering</span>
+                )}
               </div>
+              {docNumberingLoadError && (
+                <div className="mb-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{docNumberingLoadError}</div>
+              )}
               {docNumberingConfigs.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">No numbering configured.</p>
+                <p className="text-sm text-gray-400 text-center py-6">{docNumberingLoadError ? 'Unable to load numbering configuration.' : company ? 'No numbering configured.' : 'Save the company first to configure numbering.'}</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm"><thead><tr className="border-b border-gray-200">
@@ -2104,15 +2595,20 @@ export function CompanyMasterPage() {
                   <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5"><Clock size={14} className="text-indigo-500" /> Public Holidays</h2>
                   <p className="text-xs text-gray-400 mt-0.5">{holidays.length} holiday{holidays.length !== 1 ? 's' : ''} configured</p>
                 </div>
-                {company && (
+                {company ? (
                   <div className="flex items-center gap-2">
                     <Button variant="secondary" size="sm" icon={<Plus size={13} />} onClick={() => setShowAddHoliday((v) => !v)}>Add Holiday</Button>
                     <Button variant="secondary" size="sm" icon={<Calendar size={13} />} onClick={handleSeedHolidays} loading={seedingHolidays}>
                       Seed 2025 &amp; 2026
                     </Button>
                   </div>
+                ) : (
+                  <span className="text-xs text-gray-400 italic">Save the company first to manage holidays</span>
                 )}
               </div>
+              {holidaysLoadError && (
+                <div className="mb-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{holidaysLoadError}</div>
+              )}
               {showAddHoliday && company && (
                 <div className="mb-4 grid grid-cols-1 sm:grid-cols-4 gap-2 items-end bg-indigo-50/40 border border-indigo-100 rounded-lg p-3">
                   <Input label="Date" type="date" value={newHolidayDate} onChange={(e) => setNewHolidayDate(e.target.value)} required />
@@ -2125,7 +2621,9 @@ export function CompanyMasterPage() {
                 </div>
               )}
               {holidays.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">No holidays configured. Use "Seed 2025 &amp; 2026" to add central gazetted holidays.</p>
+                <p className="text-sm text-gray-400 text-center py-6">
+                  {holidaysLoadError ? 'Unable to load holidays.' : company ? 'No holidays configured. Use "Seed 2025 & 2026" to add central gazetted holidays.' : 'Save the company first to manage holidays.'}
+                </p>
               ) : (
                 <div className="overflow-x-auto max-h-80 overflow-y-auto">
                   <table className="w-full text-xs"><thead className="sticky top-0 bg-white"><tr className="border-b border-gray-200">
@@ -2163,10 +2661,24 @@ export function CompanyMasterPage() {
       </div>
 
       {/* Modals */}
+      <CertificationModal
+        open={showCertModal}
+        onClose={() => setShowCertModal(false)}
+        certKey={certModalKey}
+        companyId={company?.id ?? null}
+        onSavedForCompany={handleCertSavedForCompany}
+        onSavedPending={handleCertSavedPending}
+      />
       {company && (
         <>
           <AddPlantModal open={showAddPlant} onClose={() => setShowAddPlant(false)} onSaved={(plant) => setPlants((prev) => [...prev, plant])} companyId={company.id} />
-          <AddDocumentModal open={showAddDocument} onClose={() => setShowAddDocument(false)} onSaved={(doc) => setCompanyDocs((prev) => [...prev, doc])} companyId={company.id} />
+          <AddDocumentModal
+            open={showAddDocument}
+            onClose={() => { setShowAddDocument(false); setDroppedDocFile(null) }}
+            onSaved={(doc) => { setCompanyDocs((prev) => [...prev, doc]); setDroppedDocFile(null) }}
+            companyId={company.id}
+            initialFile={droppedDocFile}
+          />
           <AddDocNumberingModal open={showAddDocNumbering} onClose={() => setShowAddDocNumbering(false)} onSaved={(config) => setDocNumberingConfigs((prev) => [...prev, config])} companyId={company.id} />
           <EditDocumentModal
             open={showEditDocument}

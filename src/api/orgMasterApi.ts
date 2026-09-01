@@ -100,27 +100,27 @@ export async function listDesignations(params?: {
   is_active?: boolean
   limit?: number
 }): Promise<Designation[]> {
-  const res = await api.get('/api/v1/hr/designations', { params })
-  return Array.isArray(res.data) ? res.data : []
+  const res = await api.get('/hr/designations', { params })
+  return res.data
 }
 
 export async function createDesignation(body: DesignationCreate): Promise<Designation> {
-  const res = await api.post('/api/v1/hr/designations', body)
+  const res = await api.post('/hr/designations', body)
   return res.data
 }
 
 export async function getDesignation(id: string): Promise<Designation> {
-  const res = await api.get(`/api/v1/hr/designations/${id}`)
+  const res = await api.get(`/hr/designations/${id}`)
   return res.data
 }
 
 export async function updateDesignation(id: string, body: Partial<DesignationCreate>): Promise<Designation> {
-  const res = await api.patch(`/api/v1/hr/designations/${id}`, body)
+  const res = await api.patch(`/hr/designations/${id}`, body)
   return res.data
 }
 
 export async function deleteDesignation(id: string): Promise<void> {
-  await api.delete(`/api/v1/hr/designations/${id}`)
+  await api.delete(`/hr/designations/${id}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -132,26 +132,26 @@ export async function listDepartments(params?: {
   is_active?: boolean
   limit?: number
 }): Promise<Department[]> {
-  const res = await api.get('/api/v1/hr/departments', { params })
-  return Array.isArray(res.data) ? res.data : []
+  const res = await api.get('/hr/departments', { params })
+  return res.data
 }
 
 export async function createDepartment(body: DepartmentCreate): Promise<Department> {
-  const res = await api.post('/api/v1/hr/departments', body)
+  const res = await api.post('/hr/departments', body)
   return res.data
 }
 
 export async function getDepartment(id: string): Promise<Department> {
-  const res = await api.get(`/api/v1/hr/departments/${id}`)
+  const res = await api.get(`/hr/departments/${id}`)
   return res.data
 }
 
 export async function updateDepartment(id: string, body: Partial<DepartmentCreate>): Promise<Department> {
-  const res = await api.patch(`/api/v1/hr/departments/${id}`, body)
+  const res = await api.patch(`/hr/departments/${id}`, body)
   return res.data
 }
 
 export async function deleteDepartment(id: string): Promise<void> {
-  await api.delete(`/api/v1/hr/departments/${id}`)
+  await api.delete(`/hr/departments/${id}`)
 }
 

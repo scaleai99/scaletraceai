@@ -42,6 +42,9 @@ export interface Company {
   esi_number?: string | null
   factory_licence_number?: string | null
   profession_tax_no?: string | null
+  // GSTIN-registry-sourced (populated by GSTIN lookup, not user-typed)
+  gst_status?: string | null
+  gst_taxpayer_type?: string | null
   // Contact Details
   phone?: string | null
   mobile_no?: string | null
@@ -103,6 +106,8 @@ export interface Company {
   notes?: string | null
   created_by?: string | null
   updated_by?: string | null
+  created_by_name?: string | null
+  updated_by_name?: string | null
   logo_file_path?: string | null
 }
 
@@ -128,6 +133,8 @@ export interface CompanyCreatePayload {
   esi_number?: string
   factory_licence_number?: string
   profession_tax_no?: string
+  gst_status?: string
+  gst_taxpayer_type?: string
   phone?: string
   mobile_no?: string
   landline_no?: string
@@ -251,6 +258,15 @@ export interface GSTINLookupResponse {
   message?: string | null
 }
 
+export interface AiExtractedField { value: string | number | null; confidence: number }
+export interface AiCompanyField { value: string | number | null; confidence: number; label?: string }
+export interface AiExtractedFields {
+  primary?: Record<string, AiExtractedField>
+  secondary_drawing_fields?: Record<string, AiExtractedField> | null
+  doc_type?: string | null
+  company_fields?: Record<string, AiCompanyField> | null
+}
+
 export interface CompanyDocument {
   id: string
   company_id: string
@@ -265,10 +281,14 @@ export interface CompanyDocument {
   file_size?: number | null
   file_mime_type?: string | null
   status: string
+  category?: string | null
   created_at?: string | null
   created_by?: string | null
   updated_at?: string | null
   updated_by?: string | null
+  extraction_status?: string | null
+  ai_extraction_id?: string | null
+  extracted_fields?: AiExtractedFields | null
 }
 
 export interface CompanyDocumentCreatePayload {
@@ -279,6 +299,7 @@ export interface CompanyDocumentCreatePayload {
   expiry_date?: string
   issuing_authority?: string
   status?: string
+  category?: string
 }
 
 export interface CompanyDocumentUpdatePayload extends Partial<CompanyDocumentCreatePayload> {}
@@ -302,13 +323,21 @@ export interface DocumentNumberingCreatePayload {
 
 export interface DocumentNumberingUpdatePayload extends Partial<DocumentNumberingCreatePayload> {}
 
+export interface AuditTrailEntry {
+  user: string
+  user_role?: string | null
+  action: string
+  timestamp: string
+  comment?: string | null
+}
+
 // ---------------------------------------------------------------------------
 // Company CRUD
 // ---------------------------------------------------------------------------
 
 export async function getCompanies(): Promise<Company[]> {
   const { data } = await apiClient.get<Company[]>(BASE)
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 export async function getCompany(id: string): Promise<Company> {
@@ -346,7 +375,7 @@ export async function activateCompany(id: string): Promise<Company> {
 
 export async function listPlants(companyId: string): Promise<Plant[]> {
   const { data } = await apiClient.get<Plant[]>(`${BASE}/${companyId}/plants`)
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 export async function createPlant(companyId: string, payload: PlantCreatePayload): Promise<Plant> {
@@ -364,7 +393,7 @@ export async function deletePlant(companyId: string, plantId: string): Promise<v
 
 export async function listHolidays(companyId: string): Promise<PublicHoliday[]> {
   const { data } = await apiClient.get<PublicHoliday[]>(`${BASE}/${companyId}/holidays`)
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 export async function seedHolidays(companyId: string): Promise<HolidaySeedResponse> {
@@ -397,9 +426,11 @@ export async function gstinLookup(gstin: string): Promise<GSTINLookupResponse> {
 // Company Documents CRUD
 // ---------------------------------------------------------------------------
 
-export async function listCompanyDocuments(companyId: string): Promise<CompanyDocument[]> {
-  const { data } = await apiClient.get<CompanyDocument[]>(`${BASE}/${companyId}/documents`)
-  return Array.isArray(data) ? data : []
+export async function listCompanyDocuments(companyId: string, category?: string): Promise<CompanyDocument[]> {
+  const { data } = await apiClient.get<CompanyDocument[]>(`${BASE}/${companyId}/documents`, {
+    params: category ? { category } : undefined,
+  })
+  return data
 }
 
 export async function createCompanyDocument(
@@ -429,7 +460,7 @@ export async function deleteCompanyDocument(companyId: string, docId: string): P
 
 export async function listDocNumbering(companyId: string): Promise<DocumentNumbering[]> {
   const { data } = await apiClient.get<DocumentNumbering[]>(`${BASE}/${companyId}/doc-numbering`)
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 export async function createDocNumbering(
@@ -484,5 +515,16 @@ export async function uploadDocumentFile(
     formData,
     { headers: { 'Content-Type': 'multipart/form-data' } }
   )
+  return data
+}
+
+// ---------------------------------------------------------------------------
+// Audit Trail
+// ---------------------------------------------------------------------------
+
+export async function listCompanyAuditTrail(companyId: string, limit = 100): Promise<AuditTrailEntry[]> {
+  const { data } = await apiClient.get<AuditTrailEntry[]>(`${BASE}/${companyId}/audit-trail`, {
+    params: { limit },
+  })
   return data
 }

@@ -38,6 +38,7 @@ export const DEMO_RFQS: RFQ[] = [
   {
     id: 'demo-rfq-001',
     rfq_number: 'RFQ-2025-0001',
+    customer_name: null,
     customer_id: 'demo-cust-001',
     customer_site_id: null,
     contact_name: 'Rajesh Kumar',
@@ -53,6 +54,7 @@ export const DEMO_RFQS: RFQ[] = [
   {
     id: 'demo-rfq-002',
     rfq_number: 'RFQ-2025-0002',
+    customer_name: null,
     customer_id: 'demo-cust-002',
     customer_site_id: null,
     contact_name: 'Anita Sharma',
@@ -68,6 +70,7 @@ export const DEMO_RFQS: RFQ[] = [
   {
     id: 'demo-rfq-003',
     rfq_number: 'RFQ-2025-0003',
+    customer_name: null,
     customer_id: 'demo-cust-001',
     customer_site_id: null,
     contact_name: 'Vikram Nair',
@@ -218,6 +221,7 @@ const CUSTOMER_NULL_DEFAULTS: Omit<Customer,
   'payment_terms' | 'delivery_terms' | 'credit_limit' | 'currency' | 'status' |
   'approved_by' | 'approved_at' | 'created_at'
 > = {
+  notes: null,
   short_name: null,
   customer_type: null,
   pan: null,
@@ -382,7 +386,7 @@ const _supplierNullFields = {
   approved_for_heat_treatment: false, approved_for_surface: false,
   approved_for_ndt: false, approved_for_others: false, approved_for_others_text: null,
   dgca_approval_number: null, dgca_approval_expiry: null,
-  hal_vendor_code: null, isro_vendor_code: null,
+  hal_vendor_code: null, isro_vendor_code: null, notes: null,
 }
 
 export const DEMO_SUPPLIERS: Supplier[] = [
@@ -482,6 +486,9 @@ export const DEMO_QUOTATIONS: Quotation[] = [
   {
     id: 'demo-qtn-001',
     quotation_number: 'QTN-2025-0001',
+    customer_name: null,
+    required_approval_level: null,
+    margin_pct: null,
     rfq_id: 'demo-rfq-001',
     customer_id: 'demo-cust-001',
     revision: 1,
@@ -497,12 +504,15 @@ export const DEMO_QUOTATIONS: Quotation[] = [
     created_at: new Date(Date.now() - 10 * 86400000).toISOString(),
     updated_at: null,
     line_items: [
-      { id: 'demo-qli-001', quotation_id: 'demo-qtn-001', line_number: 1, part_number: 'HA-2024-PP-01', drawing_number: '23-70-00006-00', drawing_revision: 'B', quantity: 500, unit_price: 770, total_price: 385000, costing_sheet_id: null, created_at: new Date(Date.now() - 10 * 86400000).toISOString() },
+      { id: 'demo-qli-001', quotation_id: 'demo-qtn-001', line_number: 1, item_id: null, part_number: 'HA-2024-PP-01', drawing_number: '23-70-00006-00', drawing_revision: 'B', quantity: 500, unit_price: 770, total_price: 385000, costing_sheet_id: null, created_at: new Date(Date.now() - 10 * 86400000).toISOString() },
     ],
   },
   {
     id: 'demo-qtn-002',
     quotation_number: 'QTN-2025-0002',
+    customer_name: null,
+    required_approval_level: null,
+    margin_pct: null,
     rfq_id: 'demo-rfq-002',
     customer_id: 'demo-cust-002',
     revision: 1,
@@ -522,6 +532,9 @@ export const DEMO_QUOTATIONS: Quotation[] = [
   {
     id: 'demo-qtn-003',
     quotation_number: 'QTN-2025-0003',
+    customer_name: null,
+    required_approval_level: null,
+    margin_pct: null,
     rfq_id: null,
     customer_id: 'demo-cust-003',
     revision: 2,

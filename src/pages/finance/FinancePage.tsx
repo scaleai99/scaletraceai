@@ -24,6 +24,7 @@ import {
   Modal,
   Select,
   StateMachineBadge,
+  SupplierPicker,
   Table,
 } from '../../components/ui'
 import { DemoBanner } from '../../components/ui/DemoBanner'
@@ -781,6 +782,7 @@ function APTab({ onRefresh: _onRefresh }: APTabProps) {
   const [showCreate, setShowCreate] = useState(false)
 
   // Create form state
+  const [newSupplierId, setNewSupplierId] = useState<string | null>(null)
   const [newSupplierInvNumber, setNewSupplierInvNumber] = useState('')
   const [newTotalAmount, setNewTotalAmount] = useState('')
   const [creating, setCreating] = useState(false)
@@ -821,6 +823,7 @@ function APTab({ onRefresh: _onRefresh }: APTabProps) {
     setCreateError(null)
     try {
       await apiClient.post('/api/v1/finance/supplier-invoices', {
+        supplier_id: newSupplierId || undefined,
         supplier_inv_number: newSupplierInvNumber.trim(),
         total_amount: amount,
         taxable_value: amount,
@@ -828,6 +831,7 @@ function APTab({ onRefresh: _onRefresh }: APTabProps) {
         due_date: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
       })
       setShowCreate(false)
+      setNewSupplierId(null)
       setNewSupplierInvNumber('')
       setNewTotalAmount('')
       await fetchData()
@@ -916,7 +920,7 @@ function APTab({ onRefresh: _onRefresh }: APTabProps) {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                {['Internal #', 'Supplier Inv #', 'Invoice Date', 'Due Date', 'Total (₹)', 'Paid (₹)', 'Status', '3-Way Match', 'Actions'].map(
+                {['Internal #', 'Supplier Inv #', 'Supplier', 'Invoice Date', 'Due Date', 'Total (₹)', 'Paid (₹)', 'Status', '3-Way Match', 'Actions'].map(
                   (h) => (
                     <th key={h} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                       {h}
@@ -928,7 +932,7 @@ function APTab({ onRefresh: _onRefresh }: APTabProps) {
             <tbody className="divide-y divide-gray-100">
               {invoices.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
+                  <td colSpan={10} className="px-4 py-8 text-center text-gray-400">
                     No supplier invoices found.
                   </td>
                 </tr>
@@ -939,6 +943,7 @@ function APTab({ onRefresh: _onRefresh }: APTabProps) {
                       {inv.internal_number as string ?? '-'}
                     </td>
                     <td className="px-3 py-3 text-sm text-gray-900">{inv.supplier_inv_number as string}</td>
+                    <td className="px-3 py-3 text-sm text-gray-700">{(inv.supplier_name as string | null) ?? '\u2014'}</td>
                     <td className="px-3 py-3 text-sm text-gray-600">
                       {inv.invoice_date ? formatDate(inv.invoice_date as string) : '-'}
                     </td>
@@ -984,6 +989,7 @@ function APTab({ onRefresh: _onRefresh }: APTabProps) {
               <div className="bg-red-50 text-red-700 rounded-lg p-2 text-sm">{createError}</div>
             )}
             <div className="space-y-3">
+              <SupplierPicker label="Supplier" value={newSupplierId} onChange={(id) => setNewSupplierId(id)} />
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Supplier Invoice Number <span className="text-red-500">*</span>

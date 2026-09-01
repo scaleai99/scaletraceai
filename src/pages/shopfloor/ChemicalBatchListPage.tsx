@@ -1,6 +1,8 @@
 /**
  * ChemicalBatchListPage.tsx - Shop Floor - Special Process, Phase 1
  * (Chemical Control). Lists ChemicalBatch records.
+ *
+ * No demo-data fallback (CLAUDE.md rule 2) - an empty list renders empty.
  */
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -30,7 +32,7 @@ export function ChemicalBatchListPage() {
     setError(null)
     try {
       const data = await listChemicalBatches()
-      setBatches(data ?? [])
+      setBatches(data)
     } catch (err: unknown) {
       const axErr = err as { response?: { data?: { detail?: string } } }
       setError(axErr?.response?.data?.detail ?? 'Failed to load chemical batches')
@@ -117,7 +119,7 @@ export function ChemicalBatchListPage() {
 
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {loading ? (
-          <div className="px-4 py-8 text-center text-sm text-gray-400">Loading...</div>
+          <div className="px-4 py-8 text-center text-sm text-gray-400">Loading…</div>
         ) : (
           <Table
             columns={columns}

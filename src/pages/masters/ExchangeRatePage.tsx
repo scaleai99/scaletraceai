@@ -28,7 +28,7 @@ export function ExchangeRatePage() {
     try {
       setRates(await listRates())
     } catch {
-      setRates([])
+      setError('Could not load exchange rates.')
     } finally {
       setLoading(false)
     }

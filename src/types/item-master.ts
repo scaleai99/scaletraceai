@@ -106,8 +106,14 @@ export interface ExtractionField {
 
 export interface DrawingExtractionResult {
   drawing_number: ExtractionField;
+  part_number: ExtractionField;
   revision: ExtractionField;
   part_name: ExtractionField;
+  material: ExtractionField;
+  tolerance: ExtractionField;
+  key_characteristics: ExtractionField;
+  issued_by: ExtractionField;
+  approved_by: ExtractionField;
   material_spec: ExtractionField;
   length_mm: ExtractionField;
   width_mm: ExtractionField;

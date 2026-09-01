@@ -10,6 +10,7 @@ export interface SCAR {
   scar_number: string
   ncr_id: string | null
   supplier_id: string | null
+  supplier_name?: string | null
   part_number: string | null
   drawing_number: string | null
   lot_number: string | null
@@ -38,7 +39,7 @@ export interface SCARCreate {
 
 export async function listSCARs(params: { status?: string; overdue?: boolean } = {}): Promise<SCAR[]> {
   const { data } = await apiClient.get<SCAR[]>(BASE, { params })
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 export async function createSCAR(body: SCARCreate): Promise<SCAR> {

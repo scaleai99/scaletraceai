@@ -26,7 +26,7 @@ export interface QualityClauseCreate {
 
 export async function listClauses(supplierId: string): Promise<QualityClause[]> {
   const { data } = await apiClient.get<QualityClause[]>(`${V1}/suppliers/${supplierId}/quality-clauses`)
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 export async function createClause(

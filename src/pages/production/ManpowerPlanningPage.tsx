@@ -20,16 +20,7 @@ export function ManpowerPlanningPage() {
     try {
       setData(await getManpowerLoading())
     } catch {
-      // Static demo — show demo data
-      setData({
-        threshold_pct: 90,
-        work_centres: [
-          { work_centre: 'CNC Turning', planned_operator_hours: 120, available_operator_hours: 160, utilisation_pct: 75, over_threshold: false },
-          { work_centre: 'VMC Milling', planned_operator_hours: 148, available_operator_hours: 160, utilisation_pct: 92.5, over_threshold: true },
-          { work_centre: 'Grinding', planned_operator_hours: 80, available_operator_hours: 160, utilisation_pct: 50, over_threshold: false },
-          { work_centre: 'Assembly', planned_operator_hours: 60, available_operator_hours: 80, utilisation_pct: 75, over_threshold: false },
-        ]
-      })
+      setError('Could not load manpower loading.')
     } finally {
       setLoading(false)
     }
@@ -59,13 +50,13 @@ export function ManpowerPlanningPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-400 animate-pulse">
           Loading"¦
         </div>
-      ) : (data.work_centres ?? []).length === 0 ? (
+      ) : data.work_centres.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-400">
           No planned operations yet.
         </div>
       ) : (
         <div className="space-y-3">
-          {(data.work_centres ?? []).map((wc) => (
+          {data.work_centres.map((wc) => (
             <div key={wc.work_centre} className="bg-white rounded-xl border border-gray-200 p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="font-semibold text-gray-800">{wc.work_centre}</span>

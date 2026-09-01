@@ -12,8 +12,6 @@ export interface KPIData {
   date_to: string
 }
 
-// Static demo mode: always reject so ManagementDashboardPage falls back to DEMO_KPI
-
 export const getDashboardKPIs = (range = 'current_fy', from?: string, to?: string) => {
   const params: Record<string, string> = { range }
   if (from) params['from'] = from

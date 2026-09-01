@@ -1,6 +1,10 @@
 /**
  * chemicalBatchApi.ts - Shop Floor - Special Process, Phase 1 (Chemical
  * Control). Typed client for /api/v1/stp/chemical-batches.
+ *
+ * Distinct from /api/v1/special-processes (outsourced NADCAP jobs) and
+ * /api/v1/ai (Surface Treatment AI drawing analysis) - see CLAUDE.md
+ * "Documented business flows".
  */
 
 import { apiClient } from './axiosClient'
@@ -99,9 +103,10 @@ export const deleteChemicalBatch = (id: string) =>
   apiClient.delete(`${BASE}/chemical-batches/${id}`)
 
 // ---------------------------------------------------------------------------
-// Stock lot lookup (existing inventory endpoint)
+// Stock lot lookup (existing inventory endpoint - not a new route)
 // ---------------------------------------------------------------------------
 
+/** GET /api/v1/inventory/{item_code}/lots - used to pick a lot to register a chemical batch against. */
 export const listStockLotsForItem = (itemCode: string) =>
   apiClient
     .get<StockLotOption[]>(`/api/v1/inventory/${encodeURIComponent(itemCode)}/lots`, {

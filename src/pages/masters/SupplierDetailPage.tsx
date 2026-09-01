@@ -13,7 +13,7 @@
  *     Row 3 (4 cols): Approved Products (col-span-2) | Banking Info | Documents & Certs
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Info,
@@ -29,15 +29,17 @@ import {
   XCircle,
   AlertTriangle,
   Download,
-  Eye,
-  MoreHorizontal,
   ArrowLeft,
   Trash2,
+  Sparkles,
+  Loader2,
+  Link,
 } from 'lucide-react'
 
 import {
   Button, Input, Select, StateMachineBadge, GSTINInput, ConfidenceBadge,
 } from '../../components/ui'
+import type { AiExtractedFields } from '../../api/companyApi'
 import { formatDate, validateGSTIN } from '../../lib/utils'
 import { gstinLookup, GSTINLookupResponse } from '../../api/companyApi'
 import type { SupplierScorecard } from '../../api/supplierApi'
@@ -48,6 +50,7 @@ import {
   getScorecard,
   listSupplierDocuments,
   addSupplierDocument,
+  uploadSupplierDocumentFile,
   deleteSupplierDocument,
   listSupplierApprovedProducts,
   addSupplierApprovedProduct,
@@ -323,22 +326,6 @@ function FieldSelect({
   )
 }
 
-/** Star rating display */
-function StarRating({ value }: { value: number }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((n) => (
-        <Star
-          key={n}
-          size={12}
-          className={n <= Math.round(value) ? 'text-amber-400 fill-amber-400' : 'text-gray-200'}
-        />
-      ))}
-      <span className="text-xs text-gray-600 ml-1">{value.toFixed(1)}</span>
-    </div>
-  )
-}
-
 /** Document status badge */
 function DocStatusBadge({ status }: { status: string }) {
   if (status === 'Valid' || status === 'Certified')
@@ -412,6 +399,31 @@ interface SupplierDoc {
   issueDate: string
   expiryDate: string
   status: string
+  uploadedAt?: string | null
+  extractionStatus?: string | null
+  aiExtractionId?: string | null
+  extractedFields?: AiExtractedFields | null
+}
+
+interface PendingSupplierDoc {
+  tempId: string
+  document_type: string
+  doc_number: string
+  expiry_date: string
+  file: File | null
+}
+
+function _mapSupplierDoc(x: {
+  id: string; document_type: string | null; doc_number: string | null; revision: string | null
+  issue_date: string | null; expiry_date: string | null; status: string | null; uploaded_at?: string | null
+  extraction_status?: string | null; ai_extraction_id?: string | null; extracted_fields?: AiExtractedFields | null
+}): SupplierDoc {
+  return {
+    id: x.id, docType: x.document_type ?? '', docNumber: x.doc_number ?? '', revision: x.revision ?? '',
+    issueDate: x.issue_date ?? '', expiryDate: x.expiry_date ?? '', status: x.status ?? 'Valid',
+    uploadedAt: x.uploaded_at ?? null,
+    extractionStatus: x.extraction_status ?? null, aiExtractionId: x.ai_extraction_id ?? null, extractedFields: x.extracted_fields ?? null,
+  }
 }
 
 function axiosError(err: unknown): string {
@@ -537,6 +549,8 @@ export function SupplierDetailPage() {
   // ---- Documents ----
   const [supplierDocs, setSupplierDocs] = useState<SupplierDoc[]>([])
   const [newDoc, setNewDoc] = useState({ document_type: '', doc_number: '', expiry_date: '' })
+  const [aiExpandedDocId, setAiExpandedDocId] = useState<string | null>(null)
+  const [docUploadingId, setDocUploadingId] = useState<string | null>(null)
   const [scorecard, setScorecard] = useState<SupplierScorecard | null>(null)
 
   // ---- Save / Action state ----
@@ -552,6 +566,10 @@ export function SupplierDetailPage() {
   const [halVendorCode, setHalVendorCode] = useState('')
   const [isroRegistrationNumber, setIsroRegistrationNumber] = useState('')
   const [isroVendorCode, setIsroVendorCode] = useState('')
+  const [notes, setNotes] = useState('')
+  const [showQuickAddDoc, setShowQuickAddDoc] = useState(false)
+  const [pendingDocs, setPendingDocs] = useState<PendingSupplierDoc[]>([])
+  const [notesAttaching, setNotesAttaching] = useState(false)
   const [gstinLookupValue, setGstinLookupValue] = useState('')
   const [gstinLookupResult, setGstinLookupResult] = useState<GSTINLookupResponse | null>(null)
   const [gstinLookupLoading, setGstinLookupLoading] = useState(false)
@@ -633,13 +651,14 @@ export function SupplierDetailPage() {
     setHalVendorCode(sx.hal_vendor_code ?? '')
     setIsroRegistrationNumber(sx.isro_registration_number ?? '')
     setIsroVendorCode(sx.isro_vendor_code ?? '')
+    setNotes(s.notes ?? '')
   }, [])
 
   const loadContacts = useCallback(async (sid: string, fallback?: Supplier) => {
     try {
       const list = await listSupplierContacts(sid)
-      if ((list ?? []).length > 0) {
-        setContacts((list ?? []).map((c) => ({ id: c.id, name: c.name ?? '', designation: c.designation ?? '', email: c.email ?? '', phone: c.phone ?? '', isPrimary: !!c.is_primary })))
+      if (list.length > 0) {
+        setContacts(list.map((c) => ({ id: c.id, name: c.name ?? '', designation: c.designation ?? '', email: c.email ?? '', phone: c.phone ?? '', isPrimary: !!c.is_primary })))
       } else {
         const f = fallback as unknown as { contact_name?: string; contact_email?: string; contact_mobile?: string } | undefined
         if (f && (f.contact_name || f.contact_email || f.contact_mobile)) {
@@ -663,8 +682,8 @@ export function SupplierDetailPage() {
         setSupplier(data)
         populateForm(data)
         loadContacts(id!, data)
-        listSupplierApprovedProducts(id!).then((ps) => setApprovedProducts((ps ?? []).map((x) => ({ id: x.id, material: x.material ?? '', specification: x.specification ?? '', form: x.form ?? '', condition: x.condition ?? '', approvedOn: x.approved_on ?? '', status: x.status ?? 'Approved' })))).catch(() => {})
-        listSupplierDocuments(id!).then((ds) => setSupplierDocs((ds ?? []).map((x) => ({ id: x.id, docType: x.document_type ?? '', docNumber: x.doc_number ?? '', revision: x.revision ?? '', issueDate: x.issue_date ?? '', expiryDate: x.expiry_date ?? '', status: x.status ?? 'Valid' })))).catch(() => {})
+        listSupplierApprovedProducts(id!).then((ps) => setApprovedProducts(ps.map((x) => ({ id: x.id, material: x.material ?? '', specification: x.specification ?? '', form: x.form ?? '', condition: x.condition ?? '', approvedOn: x.approved_on ?? '', status: x.status ?? 'Approved' })))).catch(() => {})
+        listSupplierDocuments(id!).then((ds) => setSupplierDocs(ds.map(_mapSupplierDoc))).catch(() => {})
         getScorecard(id!).then(setScorecard).catch(() => {})
       })
       .catch((err) => {
@@ -673,6 +692,25 @@ export function SupplierDetailPage() {
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [id, isNew, populateForm, loadContacts])
+
+  // AI document-reading poll — while any loaded document is still "pending",
+  // re-fetch every ~4s (capped ~15 ticks) until extraction settles. Mirrors
+  // CustomerDetailPage.tsx's / CompanyMasterPage.tsx's polling effect.
+  const documentsRef = useRef<SupplierDoc[]>([])
+  useEffect(() => { documentsRef.current = supplierDocs }, [supplierDocs])
+  useEffect(() => {
+    if (isNew) return
+    let ticks = 0
+    const iv = setInterval(() => {
+      const hasPending = documentsRef.current.some((d) => d.extractionStatus === 'pending')
+      if (!hasPending) { clearInterval(iv); return }
+      ticks += 1
+      if (ticks > 15) { clearInterval(iv); return }
+      listSupplierDocuments(id!).then((ds) => setSupplierDocs(ds.map(_mapSupplierDoc))).catch(() => {})
+    }, 4000)
+    return () => clearInterval(iv)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNew, id])
 
   // Sync shipping when "same as billing" toggled on
   useEffect(() => {
@@ -752,6 +790,7 @@ export function SupplierDetailPage() {
     hal_vendor_code: halVendorCode.trim() || undefined,
     isro_registration_number: isroRegistrationNumber.trim() || undefined,
     isro_vendor_code: isroVendorCode.trim() || undefined,
+    notes: notes.trim() || undefined,
   })
 
   // ---------------------------------------------------------------------------
@@ -768,10 +807,15 @@ export function SupplierDetailPage() {
     setApprovedForRawMaterial(false); setApprovedForSubContract(false); setApprovedForHeatTreatment(false); setApprovedForSurface(false); setApprovedForNdt(false); setApprovedForOthers(false); setApprovedForOthersText('')
     setBankName(''); setBankBranch(''); setBankAccountNumber(''); setBankAccountType(''); setBankIfscCode(''); setBankMicrCode(''); setBankUpiId('')
     setContacts([{ name: '', designation: '', email: '', phone: '', isPrimary: false }])
-    setApprovedProducts([]); setNewProduct({ material: '', specification: '', form: '', condition: '' }); setSupplierDocs([]); setNewDoc({ document_type: '', doc_number: '', expiry_date: '' })
+    setApprovedProducts([]); setNewProduct({ material: '', specification: '', form: '', condition: '' }); setSupplierDocs([]); setNewDoc({ document_type: '', doc_number: '', expiry_date: '' }); setPendingDocs([]); setShowQuickAddDoc(false)
     setDgcaReference(''); setDgcaApprovalNumber(''); setDgcaApprovalExpiry(''); setHalSupplierCode(''); setHalVendorCode(''); setIsroRegistrationNumber(''); setIsroVendorCode('')
+    setNotes('')
     setGstinLookupValue(''); setGstinLookupResult(null); setGstinLookupError(null)
   }
+
+  // Clear the form when navigating from an existing supplier's detail page to
+  // "new" without a full component remount (matches CustomerDetailPage.tsx).
+  useEffect(() => { if (isNew) resetForm() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDiscard = () => {
     setSaveError(null); setSaveSuccess(false)
@@ -807,6 +851,7 @@ export function SupplierDetailPage() {
           ...buildPayload(),
         })
         await persistContacts(created.id)
+        await flushPendingDocs(created.id)
         navigate(`/masters/suppliers/${created.id}`, { replace: true })
       } else {
         const updated = await updateSupplier(id!, buildPayload())
@@ -918,12 +963,69 @@ export function SupplierDetailPage() {
   }
   const handleAddDoc = async () => {
     if (!newDoc.document_type.trim()) return
-    if (isNew) { setSaveError('Save the supplier before adding documents.'); return }
+    // New/unsaved supplier: buffer the document client-side; it is created for
+    // real (and any attached file uploaded) after the first Save, via flushPendingDocs.
+    if (isNew) {
+      setPendingDocs((prev) => [...prev, {
+        tempId: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        document_type: newDoc.document_type.trim(),
+        doc_number: newDoc.doc_number.trim(),
+        expiry_date: newDoc.expiry_date,
+        file: null,
+      }])
+      setNewDoc({ document_type: '', doc_number: '', expiry_date: '' })
+      return
+    }
     try {
       const c = await addSupplierDocument(id!, { document_type: newDoc.document_type.trim(), doc_number: newDoc.doc_number.trim() || undefined, expiry_date: newDoc.expiry_date || undefined })
-      setSupplierDocs((prev) => [...prev, { id: c.id, docType: c.document_type ?? '', docNumber: c.doc_number ?? '', revision: c.revision ?? '', issueDate: c.issue_date ?? '', expiryDate: c.expiry_date ?? '', status: c.status ?? 'Valid' }])
+      setSupplierDocs((prev) => [...prev, _mapSupplierDoc(c)])
       setNewDoc({ document_type: '', doc_number: '', expiry_date: '' })
     } catch (err) { setSaveError(axiosError(err)) }
+  }
+  const removePendingDoc = (tempId: string) => setPendingDocs((prev) => prev.filter((d) => d.tempId !== tempId))
+  const attachPendingDocFile = (tempId: string, file: File) =>
+    setPendingDocs((prev) => prev.map((d) => (d.tempId === tempId ? { ...d, file } : d)))
+  const flushPendingDocs = async (sid: string) => {
+    for (const pd of pendingDocs) {
+      try {
+        const c = await addSupplierDocument(sid, { document_type: pd.document_type, doc_number: pd.doc_number || undefined, expiry_date: pd.expiry_date || undefined })
+        if (pd.file) await uploadSupplierDocumentFile(sid, c.id!, pd.file)
+      } catch { /* skip a failed pending doc, continue with the rest */ }
+    }
+    setPendingDocs([])
+  }
+  // Notes-tab "Add" attaches a REAL file. Document type defaults to the file
+  // name; on a new/unsaved supplier the file is buffered and uploaded on Save.
+  const handleAttachFromNotes = async (file: File) => {
+    const typeFromName = file.name.replace(/\.[^.]+$/, '') || 'Attachment'
+    if (isNew) {
+      setPendingDocs((prev) => [...prev, {
+        tempId: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        document_type: typeFromName,
+        doc_number: '',
+        expiry_date: '',
+        file,
+      }])
+      return
+    }
+    if (!id) return
+    setNotesAttaching(true)
+    try {
+      const c = await addSupplierDocument(id, { document_type: typeFromName })
+      if (c.id) await uploadSupplierDocumentFile(id, c.id, file)
+      const ds = await listSupplierDocuments(id)
+      setSupplierDocs(ds.map(_mapSupplierDoc))
+    } catch (err) { setSaveError(axiosError(err)) }
+    finally { setNotesAttaching(false) }
+  }
+  const handleUploadDocFile = async (docId: string, file: File) => {
+    if (isNew || !id) return
+    setDocUploadingId(docId)
+    try {
+      const updated = await uploadSupplierDocumentFile(id, docId, file)
+      setSupplierDocs((prev) => prev.map((d) => (d.id === docId ? _mapSupplierDoc(updated) : d)))
+    } catch (err) { setSaveError(axiosError(err)) }
+    finally { setDocUploadingId(null) }
   }
 
   const handleGstinLookup = async () => {
@@ -1116,6 +1218,14 @@ export function SupplierDetailPage() {
                     <button onClick={() => setShowActionsMenu(false)} className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
                       Export
                     </button>
+                    <button
+                      onClick={() => { setShowActionsMenu(false); if (!isNew) navigate(`/masters/suppliers/${id}/quality-clauses`) }}
+                      disabled={isNew}
+                      title={isNew ? 'Save the supplier first' : undefined}
+                      className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    >
+                      Quality Clauses
+                    </button>
                   </div>
                 )}
               </div>
@@ -1191,10 +1301,13 @@ export function SupplierDetailPage() {
               )}
             </div>
 
-            {/* Row 1: 4 columns */}
-            <div className="grid grid-cols-4 gap-3 items-start content-start">
+            {/* Basic Information + Registration Details — everything else
+                (Business, Contacts, Manufacturing, Quality, Performance,
+                Approved For, Approved Products, Banking, Documents) lives
+                only in its own dedicated tab now — no duplicates here. */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start content-start">
 
-              {/* Column 1 - Basic Information */}
+              {/* Basic Information */}
               <SectionCard
                 icon={<Info size={12} className="text-blue-500" />}
                 title="Basic Information"
@@ -1231,7 +1344,7 @@ export function SupplierDetailPage() {
                 </FieldRow>
               </SectionCard>
 
-              {/* Column 2 - Registration Details */}
+              {/* Registration Details */}
               <SectionCard
                 icon={<Shield size={12} className="text-purple-500" />}
                 title="Registration Details"
@@ -1264,413 +1377,6 @@ export function SupplierDetailPage() {
                   <FieldInput value={dateOfIncorporation} onChange={setDateOfIncorporation} type="date" />
                 </FieldRow>
               </SectionCard>
-
-              {/* Column 3 - Business Information */}
-              <SectionCard
-                icon={<BarChart2 size={12} className="text-green-500" />}
-                title="Business Information"
-                color="bg-green-50"
-              >
-                <FieldRow label="Business Nature" required>
-                  <FieldSelect value={businessNature} onChange={setBusinessNature} options={BUSINESS_NATURE_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Service / Supply">
-                  <FieldSelect value={supplyType} onChange={setSupplyType} options={SUPPLY_TYPE_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Main Products">
-                  <FieldInput value={mainProducts} onChange={setMainProducts} placeholder="Aluminium, Titanium, SS Alloys" />
-                </FieldRow>
-                <FieldRow label="Payment Terms" required>
-                  <FieldSelect value={paymentTermsText} onChange={setPaymentTermsText} options={PAYMENT_TERMS_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="Incoterms">
-                  <FieldInput value={incoterms} onChange={(v) => setIncoterms(v.toUpperCase())} placeholder="DDP" maxLength={10} />
-                </FieldRow>
-                <FieldRow label="Min. Order (₹)">
-                  <FieldInput value={minOrderValue} onChange={setMinOrderValue} type="number" placeholder="25000.00" />
-                </FieldRow>
-                <FieldRow label="Annual Turnover">
-                  <FieldInput value={annualTurnover} onChange={setAnnualTurnover} type="number" placeholder="500000000.00" />
-                </FieldRow>
-                <FieldRow label="Currency">
-                  <FieldSelect value={preferredCurrency} onChange={setPreferredCurrency} options={CURRENCY_OPTIONS} />
-                </FieldRow>
-              </SectionCard>
-
-              {/* Column 4 - Key Contacts */}
-              <SectionCard
-                icon={<Users size={12} className="text-orange-500" />}
-                title="Key Contacts"
-                color="bg-orange-50"
-                headerRight={
-                  <button className="text-[10px] text-[#005c87] hover:underline">
-                    Manage Contacts
-                  </button>
-                }
-              >
-                <div className="px-3 py-2">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-gray-100">
-                        <th className="text-left py-1 text-gray-500 font-medium pr-1">Name</th>
-                        <th className="text-left py-1 text-gray-500 font-medium pr-1">Designation</th>
-                        <th className="text-left py-1 text-gray-500 font-medium pr-1">Email</th>
-                        <th className="text-left py-1 text-gray-500 font-medium pr-1">Phone</th>
-                        <th className="text-left py-1 text-gray-500 font-medium">Primary</th>
-                        <th className="text-left py-1 text-gray-500 font-medium"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {contacts.map((c, i) => (
-                        <tr key={i} className="border-b border-gray-50">
-                          <td className="py-1 pr-1">
-                            <input
-                              value={c.name}
-                              onChange={(e) => updateContact(i, 'name', e.target.value)}
-                              className="w-full text-xs border-0 border-b border-gray-100 focus:border-[#005c87] focus:outline-none bg-transparent py-0.5"
-                              placeholder="Name"
-                            />
-                          </td>
-                          <td className="py-1 pr-1">
-                            <input
-                              value={c.designation}
-                              onChange={(e) => updateContact(i, 'designation', e.target.value)}
-                              className="w-full text-xs border-0 border-b border-gray-100 focus:border-[#005c87] focus:outline-none bg-transparent py-0.5 text-gray-500"
-                              placeholder="Designation"
-                            />
-                          </td>
-                          <td className="py-1 pr-1">
-                            <input
-                              value={c.email}
-                              onChange={(e) => updateContact(i, 'email', e.target.value)}
-                              className="w-full text-xs border-0 border-b border-gray-100 focus:border-[#005c87] focus:outline-none bg-transparent py-0.5 text-blue-600"
-                              placeholder="email@co.in"
-                            />
-                          </td>
-                          <td className="py-1 pr-1">
-                            <input
-                              value={c.phone}
-                              onChange={(e) => updateContact(i, 'phone', e.target.value)}
-                              className="w-full text-xs border-0 border-b border-gray-100 focus:border-[#005c87] focus:outline-none bg-transparent py-0.5"
-                              placeholder="+91 ..."
-                            />
-                          </td>
-                          <td className="py-1 text-center">
-                            <input
-                              type="checkbox"
-                              checked={c.isPrimary}
-                              onChange={(e) => updateContact(i, 'isPrimary', e.target.checked)}
-                              className="rounded accent-[#005c87]"
-                            />
-                          </td>
-                          <td className="py-1 text-right">
-                            <button type="button" title="Delete" onClick={() => removeContact(i)}><Trash2 size={12} className="text-gray-300 hover:text-red-500" /></button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <button
-                    onClick={addContact}
-                    className="mt-2 text-xs text-[#005c87] flex items-center gap-1 hover:text-[#004a6e]"
-                  >
-                    <Plus size={11} /> Add Contact
-                  </button>
-                </div>
-              </SectionCard>
-            </div>
-
-            {/* Row 2: 4 sections */}
-            <div className="grid grid-cols-4 gap-3 items-start content-start">
-
-              {/* Manufacturing & Capability */}
-              <SectionCard
-                icon={<Factory size={12} className="text-teal-600" />}
-                title="Manufacturing & Capability"
-                color="bg-teal-50"
-              >
-                <FieldRow label="Location">
-                  <FieldInput value={manufacturingLocation} onChange={setManufacturingLocation} placeholder="Bengaluru, Karnataka" />
-                </FieldRow>
-                <FieldRow label="Plant Size">
-                  <FieldInput value={plantSize} onChange={setPlantSize} placeholder="45,000 Sq.Ft" />
-                </FieldRow>
-                <FieldRow label="No. of Employees">
-                  <FieldInput value={numEmployees} onChange={setNumEmployees} type="number" placeholder="120" />
-                </FieldRow>
-                <FieldRow label="Equipment">
-                  <FieldInput value={equipmentFacility} onChange={setEquipmentFacility} placeholder="CNC, Forging, Heat Treatment" />
-                </FieldRow>
-                <FieldRow label="Core Competencies">
-                  <FieldInput value={coreCompetencies} onChange={setCoreCompetencies} placeholder="High Precision Machining" />
-                </FieldRow>
-                <FieldRow label="Capacity / Month">
-                  <FieldInput value={capacityPerMonth} onChange={setCapacityPerMonth} placeholder="150 Tons" />
-                </FieldRow>
-              </SectionCard>
-
-              {/* Quality & Compliance Summary */}
-              <SectionCard
-                icon={<Shield size={12} className="text-blue-500" />}
-                title="Quality & Compliance Summary"
-                color="bg-blue-50"
-              >
-                <FieldRow label="AS 9100 Rev D">
-                  <div className="flex items-center gap-2">
-                    <FieldSelect value={as9100Status} onChange={setAs9100Status} options={CERT_STATUS_OPTIONS} />
-                    {as9100Status && <CertBadge value={as9100Status} />}
-                  </div>
-                </FieldRow>
-                <FieldRow label="NADCAP">
-                  <div className="flex items-center gap-2">
-                    <FieldSelect value={nadcapStatus} onChange={setNadcapStatus} options={NADCAP_STATUS_OPTIONS} />
-                    {nadcapStatus && <CertBadge value={nadcapStatus} />}
-                  </div>
-                </FieldRow>
-                <FieldRow label="ISO 9001:2015">
-                  <div className="flex items-center gap-2">
-                    <FieldSelect value={iso9001Status} onChange={setIso9001Status} options={CERT_STATUS_OPTIONS} />
-                    {iso9001Status && <CertBadge value={iso9001Status} />}
-                  </div>
-                </FieldRow>
-                <FieldRow label="ISO 14001:2015">
-                  <div className="flex items-center gap-2">
-                    <FieldSelect value={iso14001Status} onChange={setIso14001Status} options={CERT_STATUS_OPTIONS} />
-                    {iso14001Status && <CertBadge value={iso14001Status} />}
-                  </div>
-                </FieldRow>
-                <FieldRow label="ISO 45001:2018">
-                  <div className="flex items-center gap-2">
-                    <FieldSelect value={iso45001Status} onChange={setIso45001Status} options={CERT_STATUS_OPTIONS} />
-                    {iso45001Status && <CertBadge value={iso45001Status} />}
-                  </div>
-                </FieldRow>
-                <FieldRow label="Other Certs">
-                  <FieldInput value={otherCerts} onChange={setOtherCerts} placeholder="IATF 16949, ISO 27001" />
-                </FieldRow>
-                <FieldRow label="QA System">
-                  <FieldInput value={qaSystem} onChange={setQaSystem} placeholder="Online Quality Portal" />
-                </FieldRow>
-                <FieldRow label="FAI / PPAP">
-                  <FieldInput value={faiPpapSupport} onChange={setFaiPpapSupport} placeholder="Yes / No" />
-                </FieldRow>
-
-              </SectionCard>
-
-              {/* Performance Summary */}
-              <SectionCard
-                icon={<BarChart2 size={12} className="text-green-500" />}
-                title="Performance Summary (Last 12 Months)"
-                color="bg-green-50"
-              >
-                <div className="px-3 py-2 space-y-2">
-                  {([
-                    ['On-Time Delivery', 4.6],
-                    ['Quality Rating (PPM)', 4.7],
-                    ['Response & Support', 4.3],
-                    ['Price Competitiveness', 4.2],
-                    ['Overall Rating', 4.5],
-                  ] as [string, number][]).map(([label, val]) => (
-                    <div key={label} className="flex items-center justify-between">
-                      <span className="text-[11px] text-gray-500 w-36 shrink-0">{label}</span>
-                      <StarRating value={val} />
-                    </div>
-                  ))}
-                  <div className="pt-2 border-t border-gray-100 flex items-center gap-2">
-                    <span className="text-[11px] text-gray-500">Overall Status</span>
-                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-                      Approved Supplier
-                    </span>
-                  </div>
-                </div>
-              </SectionCard>
-
-              {/* Approved For */}
-              <SectionCard
-                icon={<Star size={12} className="text-yellow-500" />}
-                title="Approved For"
-                color="bg-yellow-50"
-              >
-                <div className="px-3 py-2 space-y-1.5">
-                  {([
-                    ['Raw Material Supply', approvedForRawMaterial, setApprovedForRawMaterial],
-                    ['Sub-Contract Machining', approvedForSubContract, setApprovedForSubContract],
-                    ['Heat Treatment', approvedForHeatTreatment, setApprovedForHeatTreatment],
-                    ['Surface Treatment', approvedForSurface, setApprovedForSurface],
-                    ['NDT Services', approvedForNdt, setApprovedForNdt],
-                  ] as [string, boolean, (v: boolean) => void][]).map(([label, checked, setter]) => (
-                    <label key={label} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => setter(e.target.checked)}
-                        className="rounded accent-[#005c87] w-3.5 h-3.5"
-                      />
-                      <span className="text-[11px] text-gray-700">{label}</span>
-                    </label>
-                  ))}
-                  <label className="flex items-start gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={approvedForOthers}
-                      onChange={(e) => setApprovedForOthers(e.target.checked)}
-                      className="rounded accent-[#005c87] w-3.5 h-3.5 mt-0.5"
-                    />
-                    <div className="flex-1">
-                      <span className="text-[11px] text-gray-700">Others:</span>
-                      {approvedForOthers && (
-                        <input
-                          value={approvedForOthersText}
-                          onChange={(e) => setApprovedForOthersText(e.target.value)}
-                          placeholder="Specify..."
-                          className="w-full text-[11px] border-0 border-b border-gray-200 focus:border-[#005c87] focus:outline-none bg-transparent py-0.5 mt-0.5"
-                        />
-                      )}
-                    </div>
-                  </label>
-                </div>
-              </SectionCard>
-            </div>
-
-            {/* Row 3: Approved Products (2 cols) + Banking (1) + Documents (1) */}
-            <div className="grid grid-cols-4 gap-3 items-start content-start">
-
-              {/* Approved Products / Materials - col-span-2 */}
-              <div className="col-span-2 self-start">
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden self-start">
-                  <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-teal-50">
-                    <Package size={12} className="text-teal-600" />
-                    <h3 className="text-xs font-semibold text-gray-700">Approved Products / Materials</h3>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-2 py-1.5 text-left text-gray-500 font-medium">S.No.</th>
-                          <th className="px-2 py-1.5 text-left text-gray-500 font-medium">Material / Product</th>
-                          <th className="px-2 py-1.5 text-left text-gray-500 font-medium">Specification</th>
-                          <th className="px-2 py-1.5 text-left text-gray-500 font-medium">Form</th>
-                          <th className="px-2 py-1.5 text-left text-gray-500 font-medium">Condition</th>
-                          <th className="px-2 py-1.5 text-left text-gray-500 font-medium">Approved On</th>
-                          <th className="px-2 py-1.5 text-left text-gray-500 font-medium">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {approvedProducts.map((p, i) => (
-                          <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                            <td className="px-2 py-1.5 text-gray-400">{i + 1}</td>
-                            <td className="px-2 py-1.5 text-gray-700 font-medium">{p.material}</td>
-                            <td className="px-2 py-1.5 text-gray-500">{p.specification}</td>
-                            <td className="px-2 py-1.5 text-gray-500">{p.form}</td>
-                            <td className="px-2 py-1.5 text-gray-500">{p.condition}</td>
-                            <td className="px-2 py-1.5 text-gray-500">{p.approvedOn}</td>
-                            <td className="px-2 py-1.5">
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                                {p.status}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                        {approvedProducts.length === 0 && (
-                          <tr>
-                            <td colSpan={7} className="px-3 py-6 text-center text-gray-400">
-                              No approved products / materials yet.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-
-              {/* Banking Information */}
-              <SectionCard
-                icon={<Shield size={12} className="text-indigo-500" />}
-                title="Banking Information"
-                color="bg-indigo-50"
-              >
-                <FieldRow label="Bank Name" required>
-                  <FieldInput value={bankName} onChange={setBankName} placeholder="HDFC Bank Ltd" />
-                </FieldRow>
-                <FieldRow label="Branch" required>
-                  <FieldInput value={bankBranch} onChange={setBankBranch} placeholder="Whitefield, Bengaluru" />
-                </FieldRow>
-                <FieldRow label="Account No." required>
-                  <FieldInput value={bankAccountNumber} onChange={setBankAccountNumber} placeholder="S0200012345678" maxLength={30} />
-                </FieldRow>
-                <FieldRow label="Account Type" required>
-                  <FieldSelect value={bankAccountType} onChange={setBankAccountType} options={BANK_ACCOUNT_TYPE_OPTIONS} />
-                </FieldRow>
-                <FieldRow label="IFSC Code" required>
-                  <FieldInput value={bankIfscCode} onChange={(v) => setBankIfscCode(v.toUpperCase())} placeholder="HDFC0001234" maxLength={11} />
-                </FieldRow>
-                <FieldRow label="MICR Code">
-                  <FieldInput value={bankMicrCode} onChange={setBankMicrCode} placeholder="560240002" maxLength={9} />
-                </FieldRow>
-                <FieldRow label="UPI ID">
-                  <FieldInput value={bankUpiId} onChange={setBankUpiId} placeholder="pmi.hdfc@hdfcbank" maxLength={50} />
-                </FieldRow>
-              </SectionCard>
-
-              {/* Documents & Certificates */}
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden self-start">
-                <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-100 bg-amber-50">
-                  <div className="flex items-center gap-2">
-                    <FileText size={12} className="text-amber-600" />
-                    <h3 className="text-xs font-semibold text-gray-700">Documents &amp; Certificates</h3>
-                  </div>
-                  <button className="inline-flex items-center gap-1 text-[10px] text-[#005c87] hover:text-[#004a6e] font-medium">
-                    <Plus size={10} /> Upload
-                  </button>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-100">
-                        <th className="px-2 py-1.5 text-left text-gray-500 font-medium">Type</th>
-                        <th className="px-2 py-1.5 text-left text-gray-500 font-medium">Doc No.</th>
-                        <th className="px-2 py-1.5 text-left text-gray-500 font-medium">Expiry</th>
-                        <th className="px-2 py-1.5 text-left text-gray-500 font-medium">Status</th>
-                        <th className="px-2 py-1.5 text-left text-gray-500 font-medium">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {supplierDocs.map((d, i) => (
-                        <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                          <td className="px-2 py-1.5 text-gray-700 max-w-[100px]">
-                            <div className="truncate" title={d.docType}>{d.docType}</div>
-                            <div className="text-[10px] text-gray-400">{d.revision !== '\u2014' ? d.revision : ''}</div>
-                          </td>
-                          <td className="px-2 py-1.5 text-gray-500 text-[10px]">{d.docNumber}</td>
-                          <td className="px-2 py-1.5 text-gray-500 text-[10px] whitespace-nowrap">{d.expiryDate}</td>
-                          <td className="px-2 py-1.5">
-                            <DocStatusBadge status={d.status} />
-                          </td>
-                          <td className="px-2 py-1.5">
-                            <div className="flex items-center gap-1">
-                              <button className="text-gray-400 hover:text-gray-600"><Download size={11} /></button>
-                              <button className="text-gray-400 hover:text-gray-600"><Eye size={11} /></button>
-                              <button className="text-gray-400 hover:text-gray-600"><MoreHorizontal size={11} /></button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="px-3 py-1.5 border-t border-gray-100 bg-gray-50 flex items-center gap-3 text-[9px] text-gray-500">
-                  <span className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> Valid
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <AlertTriangle size={8} className="text-amber-500" /> Expiring Soon (&le;30 Days)
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" /> Expired
-                  </span>
-                </div>
-              </div>
             </div>
 
           </div>
@@ -2064,9 +1770,7 @@ export function SupplierDetailPage() {
                 <FileText size={12} className="text-amber-600" />
                 <h3 className="text-xs font-semibold text-gray-700">Documents &amp; Certificates</h3>
               </div>
-              <button className="inline-flex items-center gap-1 text-xs text-[#005c87] hover:text-[#004a6e]">
-                <Plus size={12} /> Upload Document
-              </button>
+              <span className="text-[10px] text-gray-400">Add a row below, then attach its file (PDF/DOCX/XLSX)</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -2078,15 +1782,17 @@ export function SupplierDetailPage() {
                     <th className="px-3 py-2 text-left text-gray-500 font-medium">Issue Date</th>
                     <th className="px-3 py-2 text-left text-gray-500 font-medium">Expiry Date</th>
                     <th className="px-3 py-2 text-left text-gray-500 font-medium">Status</th>
+                    <th className="px-3 py-2 text-left text-gray-500 font-medium">AI Read</th>
                     <th className="px-3 py-2 text-left text-gray-500 font-medium">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {supplierDocs.length === 0 && (
-                    <tr><td colSpan={7} className="px-3 py-4 text-center text-gray-400">No documents yet. Add a certificate below.</td></tr>
+                  {supplierDocs.length === 0 && pendingDocs.length === 0 && (
+                    <tr><td colSpan={8} className="px-3 py-4 text-center text-gray-400">No documents yet. Add a certificate below.</td></tr>
                   )}
                   {supplierDocs.map((d, i) => (
-                    <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                    <Fragment key={i}>
+                    <tr className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="px-3 py-2 text-gray-700">{d.docType}</td>
                       <td className="px-3 py-2 text-gray-500">{d.docNumber}</td>
                       <td className="px-3 py-2 text-gray-500">{d.revision}</td>
@@ -2096,7 +1802,78 @@ export function SupplierDetailPage() {
                         <DocStatusBadge status={d.status} />
                       </td>
                       <td className="px-3 py-2">
-                        <button type="button" title="Delete" onClick={() => handleDeleteDoc(i)}><Trash2 size={13} className="text-gray-300 hover:text-red-500" /></button>
+                        {d.extractionStatus === 'pending' ? (
+                          <span className="inline-flex items-center gap-1 text-gray-400"><Loader2 size={11} className="animate-spin" /> Reading&hellip;</span>
+                        ) : d.extractionStatus === 'success' || d.extractionStatus === 'partial' ? (
+                          <button type="button" className="inline-flex items-center gap-1 text-[#005c87] hover:text-[#004a6e]" onClick={() => setAiExpandedDocId(aiExpandedDocId === d.id ? null : (d.id ?? null))}>
+                            <Sparkles size={11} /> {aiExpandedDocId === d.id ? 'Hide' : 'Review'} AI fields
+                          </button>
+                        ) : d.extractionStatus === 'failed' ? (
+                          <span className="inline-flex items-center gap-1 text-amber-600" title="AI reading failed"><AlertTriangle size={11} /> Failed</span>
+                        ) : d.extractionStatus === 'unsupported_file_type' ? (
+                          <span className="text-gray-300" title="AI reading supports PDF only">&mdash;</span>
+                        ) : (
+                          <span className="text-gray-300">&mdash;</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <label className="text-gray-400 hover:text-[#005c87] cursor-pointer" title="Attach / replace file">
+                            {docUploadingId === d.id ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+                            <input
+                              type="file"
+                              accept=".pdf,.docx,.xlsx"
+                              className="hidden"
+                              disabled={!d.id || docUploadingId === d.id}
+                              onChange={(e) => { const f = e.target.files?.[0]; if (f && d.id) handleUploadDocFile(d.id, f); e.target.value = '' }}
+                            />
+                          </label>
+                          <button type="button" title="Delete" onClick={() => handleDeleteDoc(i)}><Trash2 size={13} className="text-gray-300 hover:text-red-500" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                    {aiExpandedDocId === d.id && d.extractedFields && (
+                      <tr className="bg-blue-50/40 border-b border-gray-50">
+                        <td colSpan={8} className="px-4 py-2">
+                          <div className="flex flex-wrap gap-x-6 gap-y-1 text-[11px]">
+                            {Object.entries(d.extractedFields.primary ?? {}).filter(([, v]) => v.value !== null).map(([k, v]) => (
+                              <div key={k} className="flex items-center gap-1.5">
+                                <span className="text-gray-500">{k.replace(/_/g, ' ')}:</span>
+                                <span className="font-medium text-gray-800">{String(v.value)}</span>
+                                <ConfidenceBadge score={v.confidence} />
+                              </div>
+                            ))}
+                            {d.extractedFields.secondary_drawing_fields && Object.keys(d.extractedFields.secondary_drawing_fields).length > 0 && (
+                              <span className="text-gray-400 italic">Also detected drawing-style fields &mdash; informational only</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
+                  ))}
+                  {pendingDocs.map((pd) => (
+                    <tr key={pd.tempId} className="border-b border-gray-50 bg-amber-50/40">
+                      <td className="px-3 py-2 text-gray-700">{pd.document_type}</td>
+                      <td className="px-3 py-2 text-gray-500">{pd.doc_number}</td>
+                      <td className="px-3 py-2 text-gray-500">&mdash;</td>
+                      <td className="px-3 py-2 text-gray-500">&mdash;</td>
+                      <td className="px-3 py-2 text-gray-500">{pd.expiry_date || '\u2014'}</td>
+                      <td className="px-3 py-2"><span className="text-[10px] font-medium px-2 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">Pending Save</span></td>
+                      <td className="px-3 py-2"><span className="text-gray-300" title="AI reading starts after the document is saved">&mdash;</span></td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <label className="text-gray-400 hover:text-[#005c87] cursor-pointer" title={pd.file ? pd.file.name : 'Attach file (uploaded on Save)'}>
+                            <FileText size={13} className={pd.file ? 'text-[#005c87]' : ''} />
+                            <input
+                              type="file"
+                              accept=".pdf,.docx,.xlsx"
+                              className="hidden"
+                              onChange={(e) => { const f = e.target.files?.[0]; if (f) attachPendingDocFile(pd.tempId, f); e.target.value = '' }}
+                            />
+                          </label>
+                          <button type="button" title="Remove" onClick={() => removePendingDoc(pd.tempId)}><Trash2 size={13} className="text-gray-300 hover:text-red-500" /></button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -2169,15 +1946,91 @@ export function SupplierDetailPage() {
 
         {/* ---- NOTES TAB ------------------------------------------------ */}
         {activeTab === 'notes' && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 text-center text-xs text-gray-400">
-            No notes or attachments.
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center gap-1.5 mb-2"><FileText size={13} className="text-[#005c87]" /><h3 className="text-xs font-semibold text-gray-700">Internal Notes</h3></div>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={10}
+                placeholder="Internal notes about this supplier (negotiation history, key contacts, special instructions)..."
+                className="w-full text-xs border border-gray-200 rounded px-3 py-2 resize-y focus:border-[#005c87] focus:outline-none"
+              />
+              <p className="mt-2 text-[11px] text-gray-400">Notes are saved when you click <span className="font-medium text-gray-600">Save</span> on the General tab.</p>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5"><Link size={13} className="text-[#005c87]" /><h3 className="text-xs font-semibold text-gray-700">Attachments</h3></div>
+                <label className={`inline-flex items-center gap-1 text-xs cursor-pointer ${notesAttaching ? 'text-gray-400' : 'text-[#005c87] hover:text-[#004a6e]'}`} title="Attach a file (PDF / DOCX / XLSX)">
+                  {notesAttaching ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} {notesAttaching ? 'Attaching…' : 'Add'}
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.xlsx"
+                    className="hidden"
+                    disabled={notesAttaching}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAttachFromNotes(f); e.target.value = '' }}
+                  />
+                </label>
+              </div>
+              {(supplierDocs.length === 0 && pendingDocs.length === 0) ? (
+                <p className="text-xs text-gray-400 text-center py-6">No attachments. Uploaded documents appear here and in the Documents tab.</p>
+              ) : (
+                <ul className="divide-y divide-gray-50">
+                  {supplierDocs.map((d, i) => (
+                    <li key={`s-${i}`} className="flex items-center justify-between py-2 text-xs">
+                      <div className="min-w-0">
+                        <div className="text-gray-700 truncate">{d.docType || 'Document'}{d.docNumber ? ` · ${d.docNumber}` : ''}</div>
+                        <div className="text-gray-400">{d.status}{d.uploadedAt ? ` · ${formatDate(d.uploadedAt)}` : ''}</div>
+                      </div>
+                    </li>
+                  ))}
+                  {pendingDocs.map((pd) => (
+                    <li key={pd.tempId} className="flex items-center justify-between py-2 text-xs">
+                      <div className="min-w-0">
+                        <div className="text-gray-700 truncate">{pd.document_type}{pd.doc_number ? ` · ${pd.doc_number}` : ''}</div>
+                        <div className="text-amber-600">Pending — will attach on Save{pd.file ? ` · ${pd.file.name}` : ''}</div>
+                      </div>
+                      <button type="button" title="Remove" onClick={() => removePendingDoc(pd.tempId)}><Trash2 size={13} className="text-gray-300 hover:text-red-500 shrink-0" /></button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-2 text-[11px] text-gray-400">{isNew ? 'Documents you add here are saved when you click Save.' : 'Attach the actual file for a row from the Documents tab.'}</p>
+            </div>
           </div>
         )}
 
         {/* ---- HISTORY TAB ---------------------------------------------- */}
         {activeTab === 'history' && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 text-center text-xs text-gray-400">
-            No history records.
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <h3 className="text-xs font-semibold text-gray-700 mb-3">Record Information</h3>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between"><span className="text-gray-500">ASL Status</span><span className="font-medium">{status}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Created On</span><span className="font-medium">{supplier?.created_at ? formatDate(supplier.created_at) : '-'}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Last Modified</span><span className="font-medium">{supplier?.updated_at ? formatDate(supplier.updated_at) : '-'}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Contacts</span><span className="font-medium">{contacts.length}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Documents</span><span className="font-medium">{supplierDocs.length}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Approved Products</span><span className="font-medium">{approvedProducts.length}</span></div>
+              </div>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <h3 className="text-xs font-semibold text-gray-700 mb-3">Recent Activity</h3>
+              {(() => {
+                const items: { label: string; date: string }[] = []
+                if (supplier?.created_at) items.push({ label: 'Supplier record created', date: formatDate(supplier.created_at) })
+                if (supplier?.updated_at && supplier.updated_at !== supplier.created_at) items.push({ label: 'Supplier record last modified', date: formatDate(supplier.updated_at) })
+                supplierDocs.forEach((d) => items.push({ label: `Document uploaded: ${d.docType || 'Document'}`, date: d.uploadedAt ? formatDate(d.uploadedAt) : '-' }))
+                return items.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-6">No recorded activity yet.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {items.map((a, i) => (<li key={i} className="flex items-start gap-2 text-xs"><span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#005c87] shrink-0" /><div><div className="text-gray-700">{a.label}</div><div className="text-gray-400">{a.date}</div></div></li>))}
+                  </ul>
+                )
+              })()}
+              <p className="mt-3 text-[11px] text-gray-400">Full change history is captured in the global Audit Trail (Administrator view).</p>
+            </div>
           </div>
         )}
       </div>

@@ -6,6 +6,7 @@
  */
 
 import { apiClient } from './axiosClient'
+import { AiExtractedFields } from './companyApi'
 
 const BASE = '/api/v1/suppliers'
 const SPEC_BASE = '/api/v1/specifications'
@@ -101,6 +102,7 @@ export interface Supplier {
   dgca_approval_expiry: string | null
   hal_vendor_code: string | null
   isro_vendor_code: string | null
+  notes: string | null
   created_at: string | null
   updated_at: string | null
   // Detail fields
@@ -177,6 +179,7 @@ export interface SupplierCreatePayload {
   approved_for_ndt?: boolean
   approved_for_others?: boolean
   approved_for_others_text?: string
+  notes?: string
 }
 
 export interface SupplierCapabilityPayload {
@@ -275,7 +278,7 @@ export interface SpecificationListParams {
 /** List suppliers with optional filters. */
 export async function listSuppliers(params: SupplierListParams = {}): Promise<Supplier[]> {
   const { data } = await apiClient.get<Supplier[]>(BASE, { params })
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 /** Get a single supplier with capabilities and last audit eagerly loaded. */
@@ -328,7 +331,7 @@ export async function deleteSupplier(id: string): Promise<void> {
 /** Get the Approved Vendor List - Active suppliers only. */
 export async function getAVL(): Promise<Supplier[]> {
   const { data } = await apiClient.get<Supplier[]>(`${BASE}/avl`)
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 // ---------------------------------------------------------------------------
@@ -338,7 +341,7 @@ export async function getAVL(): Promise<Supplier[]> {
 /** List audits for a supplier ordered by date descending. */
 export async function listAudits(supplierId: string): Promise<SupplierAudit[]> {
   const { data } = await apiClient.get<SupplierAudit[]>(`${BASE}/${supplierId}/audits`)
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 /** Create a new audit record for a supplier. */
@@ -389,6 +392,9 @@ export interface SupplierDocument {
   status: string | null
   file_name: string | null
   uploaded_at: string | null
+  extraction_status?: string | null
+  ai_extraction_id?: string | null
+  extracted_fields?: AiExtractedFields | null
 }
 export interface SupplierDocumentCreatePayload {
   document_type: string
@@ -401,10 +407,18 @@ export interface SupplierDocumentCreatePayload {
 }
 export async function listSupplierDocuments(sid: string): Promise<SupplierDocument[]> {
   const { data } = await apiClient.get<SupplierDocument[]>(`${BASE}/${sid}/documents`)
-  return Array.isArray(data) ? data : []
+  return data
 }
 export async function addSupplierDocument(sid: string, payload: SupplierDocumentCreatePayload): Promise<SupplierDocument> {
   const { data } = await apiClient.post<SupplierDocument>(`${BASE}/${sid}/documents`, payload)
+  return data
+}
+export async function uploadSupplierDocumentFile(sid: string, docId: string, file: File): Promise<SupplierDocument> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await apiClient.post<SupplierDocument>(`${BASE}/${sid}/documents/${docId}/upload`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
   return data
 }
 export async function deleteSupplierDocument(sid: string, docId: string): Promise<void> {
@@ -432,7 +446,7 @@ export interface SupplierApprovedProductCreatePayload {
 }
 export async function listSupplierApprovedProducts(sid: string): Promise<SupplierApprovedProduct[]> {
   const { data } = await apiClient.get<SupplierApprovedProduct[]>(`${BASE}/${sid}/approved-products`)
-  return Array.isArray(data) ? data : []
+  return data
 }
 export async function addSupplierApprovedProduct(sid: string, payload: SupplierApprovedProductCreatePayload): Promise<SupplierApprovedProduct> {
   const { data } = await apiClient.post<SupplierApprovedProduct>(`${BASE}/${sid}/approved-products`, payload)
@@ -444,7 +458,7 @@ export async function deleteSupplierApprovedProduct(sid: string, productId: stri
 
 export async function listSupplierContacts(supplierId: string): Promise<SupplierContact[]> {
   const { data } = await apiClient.get<SupplierContact[]>(`${BASE}/${supplierId}/contacts`)
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 export async function addSupplierContact(supplierId: string, payload: SupplierContactCreatePayload): Promise<SupplierContact> {
@@ -458,7 +472,7 @@ export async function deleteSupplierContact(supplierId: string, contactId: strin
 
 export async function listSpecifications(params: SpecificationListParams = {}): Promise<Specification[]> {
   const { data } = await apiClient.get<Specification[]>(SPEC_BASE, { params })
-  return Array.isArray(data) ? data : []
+  return data
 }
 
 /** Create a new specification (Quality_Manager / Administrator). */

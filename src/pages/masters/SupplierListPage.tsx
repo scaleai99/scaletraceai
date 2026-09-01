@@ -10,14 +10,11 @@
  * - Fetches GET /api/v1/suppliers
  */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, AlertTriangle, Trash2 } from 'lucide-react'
 import { Table, Column, Badge, StateMachineBadge, Button, Select } from '../../components/ui'
-import { DemoBanner } from '../../components/ui/DemoBanner'
 import { listSuppliers, deleteSupplier, Supplier } from '../../api/supplierApi'
-import { useDemoFallback } from '../../lib/useDemoFallback'
-import { DEMO_SUPPLIERS } from '../../lib/demoData'
 
 type SupplierRow = Supplier & Record<string, unknown>
 
@@ -127,15 +124,28 @@ export function SupplierListPage() {
   const [search, setSearch] = useState('')
   const [aslStatus, setAslStatus] = useState('')
 
-  const { data: suppliers, isDemo, loading, error, refetch } = useDemoFallback(
-    () => listSuppliers({
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchSuppliers = useCallback(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    listSuppliers({
       search: search || undefined,
       asl_status: aslStatus || undefined,
       limit: 200,
-    }),
-    DEMO_SUPPLIERS,
-    [search, aslStatus]
-  )
+    })
+      .then((result) => { if (!cancelled) setSuppliers(result) })
+      .catch(() => { if (!cancelled) setError('Failed to load suppliers.') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [search, aslStatus])
+
+  useEffect(() => fetchSuppliers(), [fetchSuppliers])
+
+  const refetch = fetchSuppliers
 
   const handleRowClick = (row: SupplierRow) => {
     navigate(`/masters/suppliers/${row.id}`)
@@ -198,9 +208,6 @@ export function SupplierListPage() {
           {error}
         </div>
       )}
-
-      {/* Demo banner */}
-      {isDemo && <DemoBanner />}
 
       {/* Loading skeleton */}
       {loading ? (

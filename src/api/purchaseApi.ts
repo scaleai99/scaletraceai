@@ -40,6 +40,7 @@ export interface PurchaseOrder {
   po_number: string
   po_date: string
   supplier_id: string
+  supplier_name?: string | null
   total_value: number | null
   cgst_amount: number
   sgst_amount: number
@@ -87,7 +88,7 @@ export interface StockLot {
 // ---------------------------------------------------------------------------
 
 export const listPRs = (params?: Record<string, unknown>) =>
-  apiClient.get<PurchaseRequisition[]>('/api/v1/purchase/requisitions', { params }).then((r) => Array.isArray(r.data) ? r.data : [])
+  apiClient.get<PurchaseRequisition[]>('/api/v1/purchase/requisitions', { params }).then((r) => r.data)
 
 export const createPR = (data: Partial<PurchaseRequisition>) =>
   apiClient.post<PurchaseRequisition>('/api/v1/purchase/requisitions', data).then((r) => r.data)
@@ -97,12 +98,30 @@ export const createPR = (data: Partial<PurchaseRequisition>) =>
 // ---------------------------------------------------------------------------
 
 export const listPOs = (params?: Record<string, unknown>) =>
-  apiClient.get<PurchaseOrder[]>('/api/v1/purchase/orders', { params }).then((r) => Array.isArray(r.data) ? r.data : [])
+  apiClient.get<PurchaseOrder[]>('/api/v1/purchase/orders', { params }).then((r) => r.data)
 
 export const getPO = (id: string) =>
   apiClient.get<PurchaseOrder>(`/api/v1/purchase/orders/${id}`).then((r) => r.data)
 
-export const createPO = (data: Partial<PurchaseOrder>) =>
+export interface POLineCreatePayload {
+  item_code?: string
+  description?: string
+  quantity: number
+  unit_price: number
+  gst_rate?: number
+  hsn_code?: string
+  delivery_date?: string
+}
+
+export interface POCreatePayload {
+  supplier_id?: string
+  delivery_address?: string
+  payment_terms?: number
+  is_free_issue?: boolean
+  line_items: POLineCreatePayload[]
+}
+
+export const createPO = (data: POCreatePayload) =>
   apiClient.post<PurchaseOrder>('/api/v1/purchase/orders', data).then((r) => r.data)
 
 export const receivePO = (id: string, data: { receipt_date: string; heat_cert_number?: string }) =>
@@ -113,17 +132,17 @@ export const receivePO = (id: string, data: { receipt_date: string; heat_cert_nu
 // ---------------------------------------------------------------------------
 
 export const listGRNs = () =>
-  apiClient.get<GRN[]>('/api/v1/purchase/grns').then((r) => Array.isArray(r.data) ? r.data : [])
+  apiClient.get<GRN[]>('/api/v1/purchase/grns').then((r) => r.data)
 
 // ---------------------------------------------------------------------------
 // Inventory
 // ---------------------------------------------------------------------------
 
 export const listInventory = (params?: Record<string, unknown>) =>
-  apiClient.get<InventoryItem[]>('/api/v1/inventory', { params }).then((r) => Array.isArray(r.data) ? r.data : [])
+  apiClient.get<InventoryItem[]>('/api/v1/inventory', { params }).then((r) => r.data)
 
 export const getItemLots = (itemCode: string) =>
-  apiClient.get<StockLot[]>(`/api/v1/inventory/${itemCode}/lots`).then((r) => Array.isArray(r.data) ? r.data : [])
+  apiClient.get<StockLot[]>(`/api/v1/inventory/${itemCode}/lots`).then((r) => r.data)
 
 export const adjustStock = (
   itemCode: string,

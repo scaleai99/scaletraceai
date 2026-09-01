@@ -1,7 +1,7 @@
 /**
  * STEP / 3D ingestion API client - Module 05 gap (Req 5.13/5.14).
  */
-import { apiClient } from './axiosClient'
+import axios from 'axios'
 
 const BASE = '/api/v1/ai'
 
@@ -24,7 +24,7 @@ export interface StepExtraction {
 export async function extractStep(file: File): Promise<StepExtraction> {
   const form = new FormData()
   form.append('file', file)
-  const { data } = await apiClient.post<StepExtraction>(`${BASE}/extract-step`, form, {
+  const { data } = await axios.post<StepExtraction>(`${BASE}/extract-step`, form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
   return data

@@ -157,13 +157,13 @@ export function QMSDashboardPage() {
   const fetchData = () => {
     setLoading(true)
     setError(null)
-    // Static demo data — no backend needed
-    setSummary({
-      ncr: { total: 3, open: 2, awaiting_approval: 1, approved: 1, closed: 0 },
-      capa: { total: 2, open: 1, in_progress: 1, verification: 0, closed: 0 },
-      fair: { total: 7, open: 2, passed: 5, failed: 0 },
-    })
-    setLoading(false)
+    fetchQMSSummary()
+      .then(setSummary)
+      .catch((err: unknown) => {
+        const e = err as { response?: { data?: { detail?: string } }; message?: string }
+        setError(e?.response?.data?.detail ?? e?.message ?? 'Failed to load QMS data')
+      })
+      .finally(() => setLoading(false))
   }
 
   useEffect(() => {

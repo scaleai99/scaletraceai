@@ -416,6 +416,10 @@ export function CustomerPODetailPage() {
             <p className="font-semibold text-gray-900 mt-0.5">{cpo.po_number}</p>
           </div>
           <div>
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Customer</p>
+            <p className="text-gray-900 mt-0.5">{cpo.customer_name ?? <span className="font-mono text-xs">{cpo.customer_id}</span>}</p>
+          </div>
+          <div>
             <p className="text-xs text-gray-500 uppercase tracking-wide">PO Date</p>
             <p className="text-gray-900 mt-0.5">{formatDate(cpo.po_date)}</p>
           </div>
@@ -545,7 +549,7 @@ export function CustomerPODetailPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {(cpo.line_items ?? []).map((li, idx) => (
+                {cpo.line_items.map((li, idx) => (
                   <tr key={li.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
                     <td className="px-4 py-2 text-xs text-gray-400 font-semibold">{li.line_number}</td>
                     <td className="px-4 py-2 text-gray-800">{li.part_number ?? '-'}</td>

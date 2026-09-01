@@ -36,7 +36,7 @@ export function Customer360Page() {
     if (!customerId) return
     getCustomer360(customerId)
       .then(setData)
-      .catch(() => setData(null))
+      .catch(() => setError('Could not load customer 360 .'))
   }, [customerId])
 
   return (

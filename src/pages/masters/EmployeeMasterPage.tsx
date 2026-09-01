@@ -95,11 +95,12 @@ interface Attendance {
 }
 interface Education { id: string; qualification: string; institution: string | null; year: number | null; percentage: string | null }
 interface Experience { id: string; organization: string; designation: string | null; from_date: string | null; to_date: string | null; total_experience: string | null; reason_for_leaving: string | null; document_name: string | null }
-interface DocumentRec { id: string; doc_name: string; doc_type: string | null; file_size_kb: number | null; file_path: string | null }
+interface CertMeta { doc_number?: string; issue_date?: string; expiry_date?: string; issuing_authority?: string; status?: string }
+interface DocumentRec { id: string; doc_name: string; doc_type: string | null; file_size_kb: number | null; file_path: string | null; doc_number?: string | null; issue_date?: string | null; expiry_date?: string | null; issuing_authority?: string | null; status?: string | null; category?: string | null }
 
 const BASE = '/api/v1/hr'
 const listEmployeesApi = (params: Record<string, unknown>) =>
-  apiClient.get<Employee[]>(`${BASE}/employees`, { params }).then(r => Array.isArray(r.data) ? r.data : [])
+  apiClient.get<Employee[]>(`${BASE}/employees`, { params }).then(r => r.data)
 const getEmployeeApi = (id: string) =>
   apiClient.get<Employee & { competencies: Competency[]; training: Training[]; attendance: Attendance[]; education: Education[]; experience: Experience[]; documents: DocumentRec[] }>(`${BASE}/employees/${id}`).then(r => r.data)
 const createEmployeeApi = (body: Partial<Employee>) =>
@@ -327,8 +328,26 @@ function F({ field, emp, editing, onChange, compact }: {
 function SectionGrid({ sections, emp, editing, onChange }: {
   sections: Section[]; emp: Employee; editing: boolean; onChange: (k: keyof Employee, v: unknown) => void
 }) {
+  // A single-section tab (Bank Details, Compensation, Emergency Contact) spans the
+  // full page width with its fields flowing across columns — instead of a narrow
+  // half-width box with empty space beside it.
+  if (sections.length === 1) {
+    const sec = sections[0]
+    return (
+      <div className="bg-white rounded-lg border border-gray-200">
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50">
+          <h3 className="text-xs font-semibold text-gray-700">{sec.title}</h3>
+        </div>
+        <div className="px-4 py-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-10 gap-y-1">
+          {sec.fields.map((f) => (
+            <F key={String(f.key)} field={f} emp={emp} editing={editing} onChange={onChange} />
+          ))}
+        </div>
+      </div>
+    )
+  }
   return (
-    <div className="grid grid-cols-2 gap-3 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
       {sections.map((sec) => (
         <SCard key={sec.title} title={sec.title}>
           {sec.fields.map((f) => (
@@ -394,7 +413,7 @@ export function EmployeeMasterPage() {
   const [documents, setDocuments] = useState<DocumentRec[]>([])
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null)
   const [pendingPhotoUrl, setPendingPhotoUrl] = useState<string | null>(null)
-  const [pendingDocs, setPendingDocs] = useState<{ file: File; docType?: string }[]>([])
+  const [pendingDocs, setPendingDocs] = useState<{ file: File; docType?: string; meta?: CertMeta }[]>([])
   const [newEdu, setNewEdu] = useState({ qualification: '', institution: '', year: '', percentage: '' })
   const [newExp, setNewExp] = useState({ organization: '', designation: '', from_date: '', to_date: '', reason_for_leaving: '' })
 
@@ -406,7 +425,7 @@ export function EmployeeMasterPage() {
       if (deptFilter) params.department = deptFilter
       if (statusFilter) params.status = statusFilter
       const data = await listEmployeesApi(params)
-      setEmployees(Array.isArray(data) ? data : [])
+      setEmployees(data)
     } catch (e) {
       setError(errMsg(e, 'Failed to load employees. Is the backend running?'))
       setEmployees([])
@@ -437,7 +456,10 @@ export function EmployeeMasterPage() {
     await loadDetail(e.id)
   }
   const openNew = () => {
-    setDraft({ ...EMPTY_EMPLOYEE }); setCompetencies([]); setTraining([]); setAttendance([]); setEducation([]); setExperience([]); setDocuments([])
+    const today = new Date().toISOString().slice(0, 10)
+    // Auto-picked defaults for a new employee: Active status, joining date = today,
+    // nationality Indian (from EMPTY_EMPLOYEE); the employee code auto-generates on save.
+    setDraft({ ...EMPTY_EMPLOYEE, status: 'Active', date_of_joining: today }); setCompetencies([]); setTraining([]); setAttendance([]); setEducation([]); setExperience([]); setDocuments([])
     setPendingPhoto(null); setPendingPhotoUrl(null); setPendingDocs([])
     setMode('new'); setActiveTab('personal'); setSaveError(null)
   }
@@ -465,9 +487,6 @@ export function EmployeeMasterPage() {
   }
 
   const handleSave = async () => {
-    if (mode === 'new' && !(draft.emp_code || draft.employee_code || '').trim()) {
-      setSaveError('Employee Code is required'); return
-    }
     if (!(draft.first_name || '').trim() && !(draft.full_name || '').trim()) {
       setSaveError('First Name is required'); return
     }
@@ -475,13 +494,14 @@ export function EmployeeMasterPage() {
     try {
       if (mode === 'new') {
         const _nm = [draft.first_name, draft.middle_name, draft.last_name].filter(Boolean).join(' ').trim()
+        const _code = (draft.emp_code || draft.employee_code || '').trim()
         const created = await createEmployeeApi({
-          employee_code: (draft.emp_code || draft.employee_code || '').trim(),
-          full_name: _nm || (draft.emp_code || draft.employee_code || '').trim(),
+          employee_code: _code || undefined,   // omit -> backend auto-generates EMP-NNNNN
+          full_name: _nm || undefined,
           ...buildPayload(),
         })
         if (pendingPhoto) { try { await uploadPhotoTo(created.id, pendingPhoto) } catch { /* ignore */ } }
-        for (const pd of pendingDocs) { try { await uploadDocTo(created.id, pd.file, pd.docType) } catch { /* ignore */ } }
+        for (const pd of pendingDocs) { try { await uploadDocTo(created.id, pd.file, pd.docType, pd.meta) } catch { /* ignore */ } }
         setPendingPhoto(null); setPendingPhotoUrl(null); setPendingDocs([])
         await loadList()
         await openEmployee(created)
@@ -570,9 +590,17 @@ export function EmployeeMasterPage() {
     const { data } = await apiClient.post<{ photo_url: string }>(`${BASE}/employees/${id}/photo`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
     return data.photo_url
   }
-  const uploadDocTo = async (id: string, file: File, docType?: string): Promise<DocumentRec> => {
+  const uploadDocTo = async (id: string, file: File, docType?: string, meta?: CertMeta): Promise<DocumentRec> => {
     const fd = new FormData(); fd.append('file', file)
-    const { data } = await apiClient.post<DocumentRec>(`${BASE}/employees/${id}/documents/upload`, fd, { headers: { 'Content-Type': 'multipart/form-data' }, params: docType ? { doc_type: docType } : {} })
+    const params: Record<string, string> = {}
+    if (docType) params.doc_type = docType
+    if (meta?.doc_number) params.doc_number = meta.doc_number
+    if (meta?.issue_date) params.issue_date = meta.issue_date
+    if (meta?.expiry_date) params.expiry_date = meta.expiry_date
+    if (meta?.issuing_authority) params.issuing_authority = meta.issuing_authority
+    if (meta?.status) params.status = meta.status
+    if (docType) params.category = 'Certification'
+    const { data } = await apiClient.post<DocumentRec>(`${BASE}/employees/${id}/documents/upload`, fd, { headers: { 'Content-Type': 'multipart/form-data' }, params })
     return data
   }
   // For an existing employee: upload immediately. For a NEW (unsaved) employee: hold until Save.
@@ -591,6 +619,42 @@ export function EmployeeMasterPage() {
     } else {
       setPendingDocs((p) => [...p, { file, docType }])
     }
+  }
+
+  // --- Certification modal (parity with Company Master's "Add Certification") ---
+  const CERT_TYPE_OPTIONS = ['AS9100 Certificate', 'ISO 9001 Certificate', 'ISO 14001 Certificate', 'NADCAP Certificate', 'Training Certificate', 'Degree Certificate', 'Experience Certificate', 'Skill Certification', 'Other']
+  const CERT_STATUS_OPTIONS = ['Valid', 'Expired', 'Pending Renewal']
+  const EMPTY_CERT = { docType: '', customType: '', docNumber: '', issueDate: '', expiryDate: '', issuingAuthority: '', status: 'Valid' }
+  const [showCertModal, setShowCertModal] = useState(false)
+  const [certForm, setCertForm] = useState({ ...EMPTY_CERT })
+  const [certFile, setCertFile] = useState<File | null>(null)
+  const [certSaving, setCertSaving] = useState(false)
+  const [certError, setCertError] = useState<string | null>(null)
+  const openCertModal = () => { setCertForm({ ...EMPTY_CERT }); setCertFile(null); setCertError(null); setShowCertModal(true) }
+  const setCertField = (k: keyof typeof EMPTY_CERT, v: string) => setCertForm((p) => ({ ...p, [k]: v }))
+  const handleSaveCert = async () => {
+    const finalType = (certForm.docType === 'Other' ? certForm.customType : certForm.docType).trim()
+    if (!finalType) { setCertError('Certification type is required'); return }
+    if (!certFile) { setCertError('Please attach the certificate file'); return }
+    const meta: CertMeta = {
+      doc_number: certForm.docNumber.trim() || undefined,
+      issue_date: certForm.issueDate || undefined,
+      expiry_date: certForm.expiryDate || undefined,
+      issuing_authority: certForm.issuingAuthority.trim() || undefined,
+      status: certForm.status || undefined,
+    }
+    setCertSaving(true); setCertError(null)
+    try {
+      if (draft.id) {
+        const d = await uploadDocTo(draft.id, certFile, finalType, meta)
+        setDocuments((p) => [...p, d])
+      } else {
+        setPendingDocs((p) => [...p, { file: certFile, docType: finalType, meta }])
+      }
+      setShowCertModal(false)
+    } catch {
+      setCertError('Failed to save certificate. Use PDF/PNG/JPG up to 10MB.')
+    } finally { setCertSaving(false) }
   }
 
   const exportCsv = () => {
@@ -762,10 +826,15 @@ export function EmployeeMasterPage() {
 
   const attachCard = (
     <SCard title="Attachments" icon={<FileText size={12} className="text-[#204577]" />}>
-      <label className="inline-flex items-center gap-1 text-[11px] text-[#204577] hover:underline cursor-pointer mb-1" title="Upload a certificate / document (PDF, PNG, JPG)">
-        <Upload size={12} /> Upload Document
-        <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { const fl = e.target.files?.[0]; if (fl) onPickDoc(fl); e.target.value = '' }} />
-      </label>
+      <div className="flex items-center gap-3 mb-1">
+        <button type="button" onClick={openCertModal} className="inline-flex items-center gap-1 text-[11px] text-[#204577] hover:underline" title="Add a certificate with type, number, dates and issuing authority">
+          <Plus size={12} /> Add Certificate
+        </button>
+        <label className="inline-flex items-center gap-1 text-[11px] text-gray-500 hover:underline cursor-pointer" title="Quick-upload any document (PDF, PNG, JPG)">
+          <Upload size={12} /> Upload Document
+          <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { const fl = e.target.files?.[0]; if (fl) onPickDoc(fl); e.target.value = '' }} />
+        </label>
+      </div>
       <table className="w-full text-[11px]">
         <thead><tr className="text-left text-gray-500 border-b border-gray-100"><th className="py-1">Document</th><th className="py-1">Type</th><th className="py-1">Size</th><th></th></tr></thead>
         <tbody>
@@ -871,18 +940,43 @@ export function EmployeeMasterPage() {
             </div>
           </div>
           <div className="hidden xl:flex items-center gap-2 shrink-0">
-            <label className={`relative flex flex-col items-center justify-center rounded px-3 py-2 cursor-pointer transition-colors border ${hasCert('Certificate 1') ? 'border-emerald-300 bg-emerald-50' : 'border-dashed border-gray-300 hover:border-[#204577] hover:bg-gray-50'}`} title="Upload Certificate 1 (PDF or image)">
-              <div className="flex items-center gap-1 text-gray-700"><Upload size={11} /><span className="text-[10px] font-semibold">Certificate 1</span></div>
-              <span className={`text-[8px] mt-0.5 ${hasCert('Certificate 1') ? 'text-emerald-600 font-medium' : 'text-gray-400'}`}>{hasCert('Certificate 1') ? 'Certificate uploaded' : 'Upload certificate'}</span>
-              {hasCert('Certificate 1') ? <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center"><Check size={9} className="text-white" /></span> : null}
-              <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { const fl = e.target.files?.[0]; if (fl) onPickDoc(fl, 'Certificate 1'); e.target.value = '' }} />
-            </label>
-            <label className={`relative flex flex-col items-center justify-center rounded px-3 py-2 cursor-pointer transition-colors border ${hasCert('Certificate 2') ? 'border-emerald-300 bg-emerald-50' : 'border-dashed border-gray-300 hover:border-[#204577] hover:bg-gray-50'}`} title="Upload Certificate 2 (PDF or image)">
-              <div className="flex items-center gap-1 text-gray-700"><Upload size={11} /><span className="text-[10px] font-semibold">Certificate 2</span></div>
-              <span className={`text-[8px] mt-0.5 ${hasCert('Certificate 2') ? 'text-emerald-600 font-medium' : 'text-gray-400'}`}>{hasCert('Certificate 2') ? 'Certificate uploaded' : 'Upload certificate'}</span>
-              {hasCert('Certificate 2') ? <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center"><Check size={9} className="text-white" /></span> : null}
-              <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { const fl = e.target.files?.[0]; if (fl) onPickDoc(fl, 'Certificate 2'); e.target.value = '' }} />
-            </label>
+            {(() => {
+              const isCert = (t?: string | null) => (t || '').toLowerCase().includes('cert')
+              type Tile = { key: string; label: string; filePath: string | null; fileName: string; pending: boolean; id: string; idx: number }
+              const tiles: Tile[] = [
+                ...documents.filter((d) => (d.category === 'Certification') || isCert(d.doc_type)).map((d) => ({
+                  key: d.id, label: (d.doc_type || 'Cert').replace(/ Certificate$/i, '').slice(0, 10), filePath: d.file_path ?? null, fileName: d.doc_name || '', pending: false, id: d.id, idx: -1,
+                })),
+                ...pendingDocs.filter((pd) => isCert(pd.docType)).map((pd, i) => ({
+                  key: `pc${i}`, label: (pd.docType || 'Cert').replace(/ Certificate$/i, '').slice(0, 10), filePath: null, fileName: pd.file.name, pending: true, id: '', idx: i,
+                })),
+              ]
+              return (
+                <>
+                  {tiles.map((t) => {
+                    const isPdf = /\.pdf$/i.test(t.fileName)
+                    const isImg = /\.(png|jpe?g|webp)$/i.test(t.fileName)
+                    return (
+                      <div key={t.key} className="relative group/cert flex-none" title={t.label + ' Certificate'}>
+                        <div className="h-14 w-[72px] flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-md bg-gray-50 overflow-hidden hover:border-[#204577] hover:bg-blue-50 transition-colors">
+                          {t.filePath && isImg ? (
+                            <img src={t.filePath} alt={t.label} className="w-full h-full object-contain" />
+                          ) : t.filePath && isPdf ? (
+                            <a href={t.filePath} target="_blank" rel="noreferrer" className="flex flex-col items-center justify-center h-full w-full text-[#204577]"><FileText size={16} /><span className="text-[8px] font-semibold mt-0.5">{t.label} PDF</span></a>
+                          ) : (
+                            <><Upload size={12} className="text-gray-400 mb-0.5" /><span className="text-[9px] font-semibold text-gray-500 text-center leading-tight px-0.5">{t.label}</span>{t.pending ? <span className="text-[7px] text-amber-600">pending</span> : null}</>
+                          )}
+                        </div>
+                        <button onClick={() => { if (t.pending) { setPendingDocs((p) => p.filter((_, j) => j !== t.idx)) } else { deleteDocument(t.id) } }} title={'Remove ' + t.label} className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover/cert:opacity-100 transition-opacity hover:bg-red-600"><Trash2 size={8} /></button>
+                      </div>
+                    )
+                  })}
+                  <button type="button" onClick={openCertModal} title="Add Certification" className="h-14 w-[72px] flex-none flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-md bg-gray-50 hover:border-[#204577] hover:bg-blue-50 transition-colors text-gray-400 hover:text-[#204577]">
+                    <Plus size={14} /><span className="text-[9px] font-semibold mt-0.5">Add</span>
+                  </button>
+                </>
+              )
+            })()}
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0">
             <div className="relative">
@@ -920,10 +1014,11 @@ export function EmployeeMasterPage() {
         {activeTab === 'personal' && (
           <div>
             {mode === 'new' && (
-              <div className="bg-white rounded-lg border border-gray-200 p-3 mb-3 flex items-center gap-3">
-                <label className="text-[11px] text-gray-500 w-[140px] shrink-0">Employee Code<span className="text-red-400 ml-0.5">*</span></label>
-                <input value={emp.emp_code || ''} onChange={(e) => setField('emp_code', e.target.value)} placeholder="EMP-10050"
+              <div className="bg-blue-50/60 rounded-lg border border-blue-100 p-3 mb-3 flex items-center gap-3">
+                <label className="text-[11px] text-gray-500 w-[140px] shrink-0">Employee Code</label>
+                <input value={emp.emp_code || ''} onChange={(e) => setField('emp_code', e.target.value)} placeholder="Auto-generated (EMP-NNNNN)"
                   className="flex-1 max-w-xs text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#204577]" />
+                <span className="text-[10px] text-gray-400">Leave blank to auto-generate on save</span>
               </div>
             )}
             <div className="columns-1 md:columns-2 xl:columns-4 gap-3">
@@ -943,11 +1038,6 @@ export function EmployeeMasterPage() {
                 </SCard>
               </div>
               <div className="break-inside-avoid mb-3">
-                <SCard title="Job Information" icon={<Briefcase size={12} className="text-[#204577]" />}>
-                  {OV_JOB.map((fd) => <F key={String(fd.key)} field={fd} emp={emp} editing={editing} onChange={setField} />)}
-                </SCard>
-              </div>
-              <div className="break-inside-avoid mb-3">
                 <SCard title="Quick Summary" icon={<Clock size={12} className="text-[#204577]" />}>
                   <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">EMP Code</span><span className="text-gray-800 font-mono">{emp.emp_code || emp.employee_code || '-'}</span></div>
                   <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">DOJ</span><span className="text-gray-800">{formatDate(emp.date_of_joining)}</span></div>
@@ -960,21 +1050,7 @@ export function EmployeeMasterPage() {
                   <div className="flex justify-between items-center text-[11px] py-0.5"><span className="text-gray-500">Employee Status</span>{emp.status ? <StatusBadge status={emp.status} /> : <span className="text-gray-400">-</span>}</div>
                 </SCard>
               </div>
-              <div className="break-inside-avoid mb-3">
-                <SCard title="Bank Details" icon={<CreditCard size={12} className="text-[#204577]" />}>
-                  {SECTIONS.bank[0].fields.map((fd) => <F key={String(fd.key)} field={fd} emp={emp} editing={editing} onChange={setField} />)}
-                </SCard>
-              </div>
-              <div className="break-inside-avoid mb-3">
-                <SCard title="Emergency Contact" icon={<Heart size={12} className="text-[#204577]" />}>
-                  {SECTIONS.emergency[0].fields.map((fd) => <F key={String(fd.key)} field={fd} emp={emp} editing={editing} onChange={setField} />)}
-                </SCard>
-              </div>
-              <div className="break-inside-avoid mb-3">{eduCard}</div>
-              <div className="break-inside-avoid mb-3">{trainCard}</div>
-              <div className="break-inside-avoid mb-3">{attachCard}</div>
             </div>
-            {expCard}
           </div>
         )}
         {(activeTab === 'job' || activeTab === 'compensation' || activeTab === 'bank' || activeTab === 'emergency') && (
@@ -983,6 +1059,7 @@ export function EmployeeMasterPage() {
 
         {activeTab === 'qualifications' && (
           <div className="space-y-3">
+            {eduCard}
             <SCard title="Competencies / Skills" icon={<GraduationCap size={12} className="text-[#204577]" />}>
               <table className="w-full text-xs">
                 <thead><tr className="text-left text-gray-500 border-b border-gray-100">
@@ -1075,9 +1152,72 @@ export function EmployeeMasterPage() {
 
         {activeTab === 'experience' && expCard}
         {activeTab === 'documents' && attachCard}
-        {(activeTab === 'performance' || activeTab === 'leave' || activeTab === 'assets' || activeTab === 'history') && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 text-center text-xs text-gray-400">
-            {TABS.find((t) => t.id === activeTab)?.label} - coming soon.
+
+        {activeTab === 'performance' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <SCard title="Employment & Tenure" icon={<Briefcase size={12} className="text-[#204577]" />}>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Date of Joining</span><span className="text-gray-800">{formatDate(emp.date_of_joining)}</span></div>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Confirmation Date</span><span className="text-gray-800">{formatDate(emp.confirmation_date)}</span></div>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Probation Period</span><span className="text-gray-800">{emp.probation_period || '-'}</span></div>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Notice Period</span><span className="text-gray-800">{emp.notice_period || '-'}</span></div>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Total Experience</span><span className="text-gray-800">{formatExperience(emp.total_experience_months)}</span></div>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Current CTC</span><span className="text-gray-800">{formatCurrency(emp.current_ctc)}</span></div>
+            </SCard>
+            <SCard title="Skills & Competency Summary" icon={<GraduationCap size={12} className="text-[#204577]" />}>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Certified Competencies</span><span className="text-gray-800">{competencies.length}</span></div>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Expiring / Expired</span><span className="text-gray-800">{competencies.filter((c) => c.is_expired || c.expiring_soon).length}</span></div>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Training Records</span><span className="text-gray-800">{training.length}</span></div>
+              <p className="mt-2 text-[10px] text-gray-400">Formal appraisal cycles &amp; ratings are managed in HR &rarr; Appraisals.</p>
+            </SCard>
+          </div>
+        )}
+
+        {activeTab === 'leave' && (
+          <SCard title="Leave" icon={<CalendarCheck size={12} className="text-[#204577]" />}>
+            <p className="text-[11px] text-gray-500 py-2">Leave balances and applications for this employee are managed in <span className="font-medium text-gray-700">HR &rarr; Self-Service</span>. Attendance for the current period is available in the <span className="font-medium text-gray-700">Attendance</span> tab.</p>
+          </SCard>
+        )}
+
+        {activeTab === 'assets' && (
+          <SCard title="Assigned Assets" icon={<Briefcase size={12} className="text-[#204577]" />}>
+            <table className="w-full text-[11px]">
+              <thead><tr className="text-left text-gray-500 border-b border-gray-100"><th className="py-1">Asset</th><th className="py-1">Type</th><th className="py-1">Assigned On</th><th className="py-1">Status</th></tr></thead>
+              <tbody>
+                <tr><td colSpan={4} className="py-3 text-center text-gray-400">No assets assigned to this employee.</td></tr>
+              </tbody>
+            </table>
+            <p className="mt-2 text-[10px] text-gray-400">Company assets (laptops, tools, access cards) can be tracked here once the Asset register is wired.</p>
+          </SCard>
+        )}
+
+        {activeTab === 'history' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <SCard title="Record Information" icon={<Clock size={12} className="text-[#204577]" />}>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Employee Code</span><span className="text-gray-800 font-mono">{emp.emp_code || emp.employee_code || '-'}</span></div>
+              <div className="flex justify-between items-center text-[11px] py-0.5"><span className="text-gray-500">Status</span>{emp.status ? <StatusBadge status={emp.status} /> : <span className="text-gray-400">-</span>}</div>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Created On</span><span className="text-gray-800">{formatDate(emp.created_at)}</span></div>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Last Modified</span><span className="text-gray-800">{formatDate(emp.updated_at)}</span></div>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Competencies</span><span className="text-gray-800">{competencies.length}</span></div>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Training Records</span><span className="text-gray-800">{training.length}</span></div>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Documents</span><span className="text-gray-800">{documents.length}</span></div>
+              <div className="flex justify-between text-[11px] py-0.5"><span className="text-gray-500">Experience Records</span><span className="text-gray-800">{experience.length}</span></div>
+            </SCard>
+            <SCard title="Recent Activity" icon={<Clock size={12} className="text-[#204577]" />}>
+              {(() => {
+                const items: { label: string; date: string }[] = []
+                if (emp.created_at) items.push({ label: 'Employee record created', date: formatDate(emp.created_at) })
+                if (emp.updated_at && emp.updated_at !== emp.created_at) items.push({ label: 'Employee record last modified', date: formatDate(emp.updated_at) })
+                documents.forEach((d) => items.push({ label: `Document uploaded: ${d.doc_type || d.doc_name}`, date: '-' }))
+                return items.length === 0 ? (
+                  <p className="text-[11px] text-gray-400 text-center py-4">No recorded activity yet.</p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {items.map((a, i) => (<li key={i} className="flex items-start gap-2 text-[11px]"><span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#204577] shrink-0" /><div><div className="text-gray-700">{a.label}</div><div className="text-gray-400">{a.date}</div></div></li>))}
+                  </ul>
+                )
+              })()}
+              <p className="mt-2 text-[10px] text-gray-400">Full change history is captured in the global Audit Trail.</p>
+            </SCard>
           </div>
         )}
       </div>
@@ -1088,6 +1228,70 @@ export function EmployeeMasterPage() {
         <button onClick={handleDiscard} disabled={saving} className="px-4 py-1.5 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50">Discard Changes</button>
         <button onClick={handleSave} disabled={saving} className="px-4 py-1.5 text-xs text-white bg-[#204577] rounded hover:bg-[#1a3860] disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
       </div>
+
+      {/* Add Certification modal (parity with Company Master) */}
+      {showCertModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowCertModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-800">Add Certification</h3>
+              <button onClick={() => setShowCertModal(false)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
+            </div>
+            <div className="px-4 py-3 space-y-3">
+              {certError ? <div className="rounded bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{certError}</div> : null}
+              <div>
+                <label className="block text-[11px] text-gray-500 mb-1">Certification Type <span className="text-red-400">*</span></label>
+                <select value={certForm.docType} onChange={(e) => setCertField('docType', e.target.value)} className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-[#204577]">
+                  <option value="">- Select -</option>
+                  {CERT_TYPE_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              {certForm.docType === 'Other' && (
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">Specify Certification Type <span className="text-red-400">*</span></label>
+                  <input value={certForm.customType} onChange={(e) => setCertField('customType', e.target.value)} placeholder="e.g. Six Sigma Green Belt" className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#204577]" />
+                </div>
+              )}
+              <div>
+                <label className="block text-[11px] text-gray-500 mb-1">Certificate Number</label>
+                <input value={certForm.docNumber} onChange={(e) => setCertField('docNumber', e.target.value)} className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 font-mono focus:outline-none focus:ring-1 focus:ring-[#204577]" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">Issue Date</label>
+                  <input type="date" value={certForm.issueDate} onChange={(e) => setCertField('issueDate', e.target.value)} className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#204577]" />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-gray-500 mb-1">Expiry Date</label>
+                  <input type="date" value={certForm.expiryDate} onChange={(e) => setCertField('expiryDate', e.target.value)} className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#204577]" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] text-gray-500 mb-1">Issuing Authority</label>
+                <input value={certForm.issuingAuthority} onChange={(e) => setCertField('issuingAuthority', e.target.value)} placeholder="e.g. TUV, BSI, DGCA" className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#204577]" />
+              </div>
+              <div>
+                <label className="block text-[11px] text-gray-500 mb-1">Status</label>
+                <select value={certForm.status} onChange={(e) => setCertField('status', e.target.value)} className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-[#204577]">
+                  {CERT_STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] text-gray-500 mb-1">Certificate File <span className="text-red-400">*</span></label>
+                <label className="flex items-center gap-2 text-xs border border-dashed border-gray-300 rounded px-3 py-2 cursor-pointer hover:border-[#204577] hover:bg-gray-50">
+                  <Upload size={13} className="text-[#204577]" />
+                  <span className="text-gray-600">{certFile ? certFile.name : 'Choose a file (PDF / PNG / JPG, up to 10MB)'}</span>
+                  <input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { const fl = e.target.files?.[0]; if (fl) setCertFile(fl); e.target.value = '' }} />
+                </label>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-100">
+              <button onClick={() => setShowCertModal(false)} className="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-50">Cancel</button>
+              <button onClick={handleSaveCert} disabled={certSaving} className="px-3 py-1.5 text-xs text-white bg-[#204577] rounded hover:bg-[#1a3860] disabled:opacity-50">{certSaving ? 'Saving...' : 'Save Certification'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

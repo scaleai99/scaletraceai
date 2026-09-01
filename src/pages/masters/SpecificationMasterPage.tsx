@@ -3,6 +3,10 @@
  *
  * The approved aerospace/defence specification library (AMS / MIL / ASTM /
  * JSS) referenced by RFQ, Configuration Review, Special Process and Spec-AI.
+ * Built to the STABLE Customer/Company standard: real data only (NO demo
+ * fallback), mandatory spec_number enforced on the frontend (backend also
+ * rejects), a real resetForm on "new", and soft-delete (status -> Deleted,
+ * row kept for FK integrity, filtered from the list).
  */
 import { useEffect, useState, useCallback } from 'react'
 import { Plus, RefreshCw, Pencil, Trash2, Search, X, ShieldCheck } from 'lucide-react'
@@ -51,7 +55,7 @@ export function SpecificationMasterPage() {
       process_category: category || undefined,
       scale_qualified: qualifiedOnly || undefined,
     })
-      .then((data) => setRows(data ?? []))
+      .then(setRows)
       .catch((err: unknown) => {
         const ax = err as { response?: { data?: { detail?: string } } }
         setLoadError(ax?.response?.data?.detail ?? 'Failed to load specifications')
@@ -62,6 +66,7 @@ export function SpecificationMasterPage() {
 
   useEffect(() => { load() }, [load])
 
+  // resetForm: clears every field back to empty "new" state (rule 3)
   const resetForm = () => { setForm(EMPTY_FORM); setEditingId(null); setFormError(null) }
 
   const openNew = () => { resetForm(); setShowModal(true) }
@@ -83,6 +88,7 @@ export function SpecificationMasterPage() {
   const closeModal = () => { setShowModal(false); resetForm() }
 
   const handleSave = async () => {
+    // mandatory-field enforcement (frontend blocks; backend also 400s)
     if (!form.spec_number.trim()) { setFormError('Specification number is required.'); return }
     setSaving(true); setFormError(null)
     const payload = {
@@ -127,7 +133,7 @@ export function SpecificationMasterPage() {
           <h1 className="text-2xl font-bold text-gray-900">Specification Master</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             Approved aerospace / defence specifications (AMS / MIL / ASTM / JSS)
-            <span className="text-gray-400"> - {rows.length} spec{rows.length === 1 ? '' : 's'}</span>
+            <span className="text-gray-400"> &middot; {rows.length} spec{rows.length === 1 ? '' : 's'}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">

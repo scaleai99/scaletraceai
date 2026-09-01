@@ -81,7 +81,7 @@ export interface APListParams {
 export const listSupplierInvoices = (params?: APListParams) =>
   apiClient
     .get<SupplierInvoice[]>('/api/v1/finance/supplier-invoices', { params })
-    .then((r) => Array.isArray(r.data) ? r.data : [])
+    .then((r) => r.data)
 
 export const createSupplierInvoice = (data: SupplierInvoiceCreate) =>
   apiClient

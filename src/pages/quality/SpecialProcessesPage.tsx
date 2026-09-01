@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from 'react'
 import { Plus, RefreshCw, AlertTriangle } from 'lucide-react'
-import axios from 'axios'
+import { apiClient } from '../../api/axiosClient'
 import {
   Badge,
   StateMachineBadge,
@@ -19,6 +19,7 @@ import {
   Modal,
   Input,
   Select,
+  SupplierPicker,
 } from '../../components/ui'
 import { DemoBanner } from '../../components/ui/DemoBanner'
 
@@ -39,6 +40,7 @@ interface ProcessJob {
   work_order_id: string | null
   process_master_id: string
   supplier_id: string | null
+  supplier_name?: string | null
   status: string
   nadcap_expiry_warning: boolean
 }
@@ -121,7 +123,7 @@ function NewProcessModal({ onCreated, onClose }: NewProcessModalProps) {
     setLoading(true)
     setError(null)
     try {
-      await axios.post(MASTER_BASE, {
+      await apiClient.post(MASTER_BASE, {
         process_code: processCode.trim(),
         process_name: processName.trim(),
         nadcap_required: nadcapRequired === 'true',
@@ -192,7 +194,7 @@ interface NewJobModalProps {
 function NewJobModal({ onCreated, onClose }: NewJobModalProps) {
   const [workOrderId, setWorkOrderId] = useState('')
   const [processMasterId, setProcessMasterId] = useState('')
-  const [supplierId, setSupplierId] = useState('')
+  const [supplierId, setSupplierId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -204,7 +206,7 @@ function NewJobModal({ onCreated, onClose }: NewJobModalProps) {
     setLoading(true)
     setError(null)
     try {
-      await axios.post(JOBS_BASE, {
+      await apiClient.post(JOBS_BASE, {
         work_order_id: workOrderId || null,
         process_master_id: processMasterId.trim(),
         supplier_id: supplierId || null,
@@ -233,11 +235,10 @@ function NewJobModal({ onCreated, onClose }: NewJobModalProps) {
         value={processMasterId}
         onChange={(e) => setProcessMasterId(e.target.value)}
       />
-      <Input
-        label="Supplier ID"
-        placeholder="Paste supplier UUID"
+      <SupplierPicker
+        label="Supplier"
         value={supplierId}
-        onChange={(e) => setSupplierId(e.target.value)}
+        onChange={(id) => setSupplierId(id)}
       />
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex justify-end gap-2 pt-1">
@@ -375,8 +376,8 @@ function JobsTable({
               <td className="px-4 py-3 font-mono text-xs text-gray-800">
                 {(row.process_master_id as string).slice(0, 8)}"¦
               </td>
-              <td className="px-4 py-3 font-mono text-xs text-gray-600">
-                {(row.supplier_id as string | null) ?? '""'}
+              <td className="px-4 py-3 text-xs text-gray-700">
+                {(row.supplier_name as string | null) ?? '\u2014'}
               </td>
               <td className="px-4 py-3">
                 <StateMachineBadge state={row.status as string} size="sm" />
@@ -421,7 +422,7 @@ export function SpecialProcessesPage() {
   const fetchMasters = () => {
     setMastersLoading(true)
     setMastersError(null)
-    axios
+    apiClient
       .get<PMRow[]>(MASTER_BASE)
       .then(({ data }) => {
         if (Array.isArray(data) && data.length > 0) {
@@ -442,7 +443,7 @@ export function SpecialProcessesPage() {
   const fetchJobs = () => {
     setJobsLoading(true)
     setJobsError(null)
-    axios
+    apiClient
       .get<PJRow[]>(JOBS_BASE)
       .then(({ data }) => {
         if (Array.isArray(data) && data.length > 0) {
