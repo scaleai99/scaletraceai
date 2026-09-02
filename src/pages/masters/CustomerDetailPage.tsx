@@ -359,7 +359,7 @@ export function CustomerDetailPage() {
 
   const loadDocuments = async () => {
     if (!id || id === 'new') return
-    try { setDocuments(await listCustomerDocuments(id)) } catch { /* keep existing */ }
+    try { const r = await listCustomerDocuments(id); setDocuments(Array.isArray(r) ? r : []) } catch { /* keep existing */ }
   }
 
   // Poll while any document's AI read is still running in the background
@@ -635,7 +635,8 @@ export function CustomerDetailPage() {
   // ---------------------------------------------------------------------------
   const loadContacts = useCallback(async (custId: string, fallback?: Customer) => {
     try {
-      const list = await listCustomerContacts(custId)
+      const res = await listCustomerContacts(custId)
+      const list = Array.isArray(res) ? res : []
       if (list.length > 0) {
         setContacts(list.map((c) => ({ id: c.id, name: c.name ?? '', designation: c.designation ?? '', email: c.email ?? '', phone: c.phone ?? '' })))
       } else {
@@ -671,7 +672,7 @@ export function CustomerDetailPage() {
   }, [id, isNew, populateForm, loadContacts])
 
   useEffect(() => {
-    listCustomers().then(setCustomerOptions).catch(() => {})
+    listCustomers().then((r) => setCustomerOptions(Array.isArray(r) ? r : [])).catch(() => {})
   }, [])
 
   // Sync shipping when "same as billing" toggled on
