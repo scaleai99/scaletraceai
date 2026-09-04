@@ -129,6 +129,14 @@ import { SurfaceTreatmentPage } from './pages/quality/SurfaceTreatmentPage'     
 import { ManpowerPlanningPage } from './pages/production/ManpowerPlanningPage'       // Module 16 gap
 import { WhatsAppLogPage } from './pages/finance/WhatsAppLogPage'                    // Module 34 gap
 
+// """ Masters " New Phase 7 pages (2026-08-30) """""""""""""""""""""""""""""
+import { MachineMasterPage } from './pages/masters/MachineMasterPage'
+import { MaterialMasterPage } from './pages/masters/MaterialMasterPage'
+import { MeasurementMasterPage } from './pages/masters/MeasurementMasterPage'
+import { ProcessMethodMasterPage } from './pages/masters/ProcessMethodMasterPage'
+import { RatesMasterPage } from './pages/masters/RatesMasterPage'
+import ExportControlPage from './pages/quality/ExportControlPage'
+
 
 // Wrapper to force remount when customer id changes
 function CustomerDetailPageWrapper() {
@@ -181,6 +189,12 @@ export default function App() {
           <Route path="masters/exchange-rates" element={<ExchangeRatePage />} />
           <Route path="masters/departments" element={<DepartmentMasterPage />} />
           <Route path="masters/designations" element={<DesignationMasterPage />} />
+          {/* Phase 7 - New Masters */}
+          <Route path="masters/machines" element={<MachineMasterPage />} />
+          <Route path="masters/materials" element={<MaterialMasterPage />} />
+          <Route path="masters/measurements" element={<MeasurementMasterPage />} />
+          <Route path="masters/process-methods" element={<ProcessMethodMasterPage />} />
+          <Route path="masters/rates" element={<RatesMasterPage />} />
 
           {/* """ Sales """"""""""""""""""""""""""""""""""""""""""""" */}
           {/* Module 04 - RFQ */}
@@ -275,6 +289,8 @@ export default function App() {
           <Route path="quality/calibration" element={<CalibrationPage />} />
           {/* Module 21 - Document Control */}
           <Route path="quality/documents" element={<DocumentControlPage />} />
+          {/* Phase 7 - Export Control (ITAR / EAR) */}
+          <Route path="quality/export-control" element={<ExportControlPage />} />
 
           {/* """ Dispatch """""""""""""""""""""""""""""""""""""""""" */}
           {/* Module 23 - Delivery Challans */}
