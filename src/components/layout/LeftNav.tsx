@@ -43,6 +43,9 @@ import {
   GitBranch,
   ChevronDown,
   FlaskConical,
+  Cpu,
+  Ruler,
+  Percent,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -78,6 +81,11 @@ const navGroups: NavGroup[] = [
       { to: '/masters/suppliers', label: 'Suppliers', icon: Truck },
       { to: '/masters/items', label: 'Items', icon: Package },
       { to: '/masters/specifications', label: 'Specifications', icon: FileText },
+      { to: '/masters/machines', label: 'Machine', icon: Cpu },
+      { to: '/masters/process-methods', label: 'Process & Methods', icon: Network },
+      { to: '/masters/materials', label: 'Material', icon: Boxes },
+      { to: '/masters/measurements', label: 'Measurements', icon: Ruler },
+      { to: '/masters/rates', label: 'Rates & Overheads', icon: Percent },
     ],
   },
   {
@@ -126,6 +134,7 @@ const navGroups: NavGroup[] = [
       { to: '/quality/scars', label: 'SCAR', icon: ShieldAlert },
       { to: '/quality/fairs', label: 'FAI / AS9102', icon: FileText },
       { to: '/quality/special-processes', label: 'Special Processes', icon: Wrench },
+      { to: '/quality/export-control', label: 'Export Control', icon: ShieldAlert },
       { to: '/quality/surface-treatment', label: 'Surface Treatment AI', icon: Sparkles },
       { to: '/quality/calibration', label: 'Calibration', icon: Calculator },
       { to: '/quality/documents', label: 'Document Control', icon: FileText },
